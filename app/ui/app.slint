@@ -1,0 +1,135 @@
+export struct ForecastDay {
+    week: string,
+    icon: string,
+    text: string,
+    low: string,
+    high: string,
+}
+
+export component AppWindow inherits Window {
+    width: 1024px;
+    height: 758px;
+    title: "Kindle Weather Clock";
+    background: #000000;
+
+    // Clock & calendar
+    in property <string> time: "";
+    in property <string> date: "";
+    in property <string> weekday: "";
+    in property <string> lunar: "";
+    in property <string> festival: "";
+    in property <string> yi: "";
+    in property <string> ji: "";
+
+    // Weather
+    in property <string> weather-kind: "sun";
+    in property <string> weather-text: "";
+    in property <string> temp: "";
+    in property <string> wind: "";
+    in property <string> humidity: "";
+    in property <string> pressure: "";
+    in property <string> aqi: "";
+
+    // Forecast
+    in property <[ForecastDay]> forecast: [];
+
+    HorizontalLayout {
+        padding: 30px;
+        spacing: 40px;
+
+        // Left: Clock + Calendar
+        VerticalLayout {
+            spacing: 16px;
+            horizontal-stretch: 3;
+            vertical-stretch: 1;
+
+            Text {
+                text: root.time;
+                font-size: 176px;
+                font-weight: 700;
+                color: #ffffff;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            HorizontalLayout {
+                spacing: 20px;
+
+                Text { text: root.weekday; font-size: 40px; font-weight: 700; color: #ffffff; }
+                Text { text: root.date; font-size: 36px; color: #ffffff; }
+            }
+
+            Text { text: root.lunar; font-size: 32px; color: #ffffff; horizontal-alignment: center; }
+            Text { text: root.festival; font-size: 32px; color: #ffffff; horizontal-alignment: center; }
+            Text { text: root.yi; font-size: 26px; color: #ffffff; wrap: word-wrap; }
+            Text { text: root.ji; font-size: 26px; color: #ffffff; wrap: word-wrap; }
+        }
+
+        // Right: Weather + Forecast
+        VerticalLayout {
+            spacing: 20px;
+            horizontal-stretch: 2;
+            vertical-stretch: 1;
+
+            // Weather current
+            HorizontalLayout {
+                spacing: 16px;
+
+                Rectangle {
+                    width: 90px;
+                    height: 90px;
+
+                    if root.weather-kind == "sun": Image { width: 90px; height: 90px; source: @image-url("icons/sun.svg"); image-fit: contain; }
+                    if root.weather-kind == "cloud-sun": Image { width: 90px; height: 90px; source: @image-url("icons/cloud-sun.svg"); image-fit: contain; }
+                    if root.weather-kind == "cloud": Image { width: 90px; height: 90px; source: @image-url("icons/cloud.svg"); image-fit: contain; }
+                    if root.weather-kind == "cloud-rain": Image { width: 90px; height: 90px; source: @image-url("icons/cloud-rain.svg"); image-fit: contain; }
+                    if root.weather-kind == "cloud-rain-wind": Image { width: 90px; height: 90px; source: @image-url("icons/cloud-rain-wind.svg"); image-fit: contain; }
+                    if root.weather-kind == "cloud-lightning": Image { width: 90px; height: 90px; source: @image-url("icons/cloud-lightning.svg"); image-fit: contain; }
+                    if root.weather-kind == "snowflake": Image { width: 90px; height: 90px; source: @image-url("icons/snowflake.svg"); image-fit: contain; }
+                    if root.weather-kind == "cloud-fog": Image { width: 90px; height: 90px; source: @image-url("icons/cloud-fog.svg"); image-fit: contain; }
+                }
+
+                VerticalLayout {
+                    spacing: 6px;
+                    horizontal-stretch: 1;
+
+                    Text { text: root.weather-text; font-size: 36px; font-weight: 700; color: #ffffff; }
+                    Text { text: root.temp; font-size: 48px; font-weight: 700; color: #ffffff; }
+                    Text { text: root.wind; font-size: 26px; color: #ffffff; }
+                    Text { text: root.humidity; font-size: 26px; color: #ffffff; }
+                    Text { text: root.aqi; font-size: 26px; color: #ffffff; }
+                }
+            }
+
+            // Forecast
+            VerticalLayout {
+                spacing: 10px;
+                vertical-stretch: 1;
+
+                Text { text: "三天预报"; font-size: 30px; font-weight: 700; color: #ffffff; }
+
+                for day in root.forecast : HorizontalLayout {
+                    spacing: 10px;
+
+                    Text { text: day.week; font-size: 26px; width: 70px; color: #ffffff; }
+
+                    Rectangle {
+                        width: 36px;
+                        height: 36px;
+
+                        if day.icon == "sun": Image { width: 36px; height: 36px; source: @image-url("icons/sun.svg"); image-fit: contain; }
+                        if day.icon == "cloud-sun": Image { width: 36px; height: 36px; source: @image-url("icons/cloud-sun.svg"); image-fit: contain; }
+                        if day.icon == "cloud": Image { width: 36px; height: 36px; source: @image-url("icons/cloud.svg"); image-fit: contain; }
+                        if day.icon == "cloud-rain": Image { width: 36px; height: 36px; source: @image-url("icons/cloud-rain.svg"); image-fit: contain; }
+                        if day.icon == "cloud-lightning": Image { width: 36px; height: 36px; source: @image-url("icons/cloud-lightning.svg"); image-fit: contain; }
+                        if day.icon == "snowflake": Image { width: 36px; height: 36px; source: @image-url("icons/snowflake.svg"); image-fit: contain; }
+                        if day.icon == "cloud-fog": Image { width: 36px; height: 36px; source: @image-url("icons/cloud-fog.svg"); image-fit: contain; }
+                    }
+
+                    Text { text: day.text; font-size: 26px; color: #ffffff; }
+                    Text { text: day.low + "~" + day.high + "°C"; font-size: 26px; color: #ffffff; }
+                }
+            }
+        }
+    }
+}
