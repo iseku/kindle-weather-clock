@@ -99,10 +99,11 @@ export component AppWindow inherits Window {
                         border-width: cell.is_today ? 2px : 0px;
                         border-color: #000000;
                         VerticalLayout {
-                            padding: 3px;
+                            alignment: center;   // 内容在 72px 格子里垂直居中，不贴框顶
+                            padding: 2px;
                             spacing: 0px;
-                            Text { text: cell.day; font-size: 27px; horizontal-alignment: center; color: #000000; }
-                            Text { text: cell.label; font-size: 16px; horizontal-alignment: center; color: #555555; }
+                            Text { text: cell.day; font-size: 27px; horizontal-alignment: center; vertical-stretch: 0; color: #000000; }
+                            Text { text: cell.label; font-size: 16px; horizontal-alignment: center; vertical-stretch: 0; color: #555555; }
                         }
                     }
                 }
