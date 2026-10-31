@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{Datelike, Local, Timelike};
+use chrono::{Datelike, FixedOffset, NaiveDate, Timelike, Utc};
 use serde::Deserialize;
 use slint::{ModelRc, SharedString, Timer, TimerMode, VecModel};
 use lunar_rs::Solar;
@@ -121,12 +121,14 @@ fn update_weather(app: &AppWindow, agent: &ureq::Agent) {
     if let Some(sk) = fetch_realtime(agent) {
         app.set_weather_kind(SharedString::from(weather_kind(&sk.weather)));
         app.set_weather_text(SharedString::from(sk.weather.clone()));
-        app.set_temp(SharedString::from(format!("{}°C", sk.temp)));
-        app.set_wind(SharedString::from(format!("{} {}", sk.WD, sk.WS)));
-        app.set_humidity(SharedString::from(format!("湿度 {}", sk.SD)));
-        app.set_pressure(SharedString::from(format!("气压 {}", sk.qy)));
-        app.set_aqi(SharedString::from(format!("AQI {}", sk.aqi)));
+        app.set_temp(SharedString::from(format!("{}℃", sk.temp)));
+        app.set_wind_dir(SharedString::from(sk.WD));
+        app.set_wind_force(SharedString::from(sk.WS));
+        app.set_humidity(SharedString::from(format!("{}%", sk.SD.trim_end_matches('%'))));
     }
+
+    app.set_location(SharedString::from(fetch_location(agent)));
+    app.set_battery(SharedString::from(fetch_battery()));
 
     let forecast = fetch_forecast(agent);
     let rows: Vec<ForecastDay> = forecast
@@ -144,15 +146,18 @@ fn update_weather(app: &AppWindow, agent: &ureq::Agent) {
 
 // ---------- 时钟 + 农历 ----------
 
-fn update_clock(app: &AppWindow) {
-    let now = Local::now();
+/// day_changed 为 false 时只更新时间，不重建日历。
+/// ponytail: 日历是 ModelRc，每次新建对象都会让 Slint 判定属性变更并重绘整块日历，
+/// 而本函数被 1s 定时器调用 —— 不拦住的话墨水屏每秒刷一次大区域，实测一晚掉 33% 电。
+fn update_clock(app: &AppWindow, now: &chrono::DateTime<FixedOffset>, day_changed: bool) {
     app.set_time(SharedString::from(format!(
         "{:02}:{:02}",
         now.hour(),
         now.minute()
     )));
-    app.set_date(SharedString::from(now.format("%Y-%m-%d").to_string()));
-
+    if !day_changed {
+        return;
+    }
     let weekday = match now.weekday() {
         chrono::Weekday::Mon => "星期一",
         chrono::Weekday::Tue => "星期二",
@@ -162,16 +167,25 @@ fn update_clock(app: &AppWindow) {
         chrono::Weekday::Sat => "星期六",
         chrono::Weekday::Sun => "星期日",
     };
-    app.set_weekday(SharedString::from(weekday));
+    app.set_date(SharedString::from(format!(
+        "{}年{}月{}日 {}",
+        now.year(),
+        now.month(),
+        now.day(),
+        weekday
+    )));
 
     // 农历
     let solar = Solar::from_ymd(now.year() as i32, now.month() as i32, now.day() as i32).unwrap();
     let lunar = solar.lunar();
     app.set_lunar(SharedString::from(format!(
-        "{}{}",
+        "农历 {}月{}",
         lunar.month_in_chinese(),
         lunar.day_in_chinese()
     )));
+
+    // 整月日历
+    app.set_calendar(ModelRc::new(VecModel::from(build_calendar(&now))));
 
     let mut festivals: Vec<String> = lunar.festivals().iter().map(|s| s.to_string()).collect();
     if let Some(jq) = lunar.current_jie_qi() {
@@ -185,53 +199,124 @@ fn update_clock(app: &AppWindow) {
     app.set_ji(SharedString::from(format!("忌 {}", lunar.day_ji().join(" "))));
 }
 
-// ---------- 主入口 ----------
+// Kindle 系统时钟是 UTC，固定东八区
+fn now_east8() -> chrono::DateTime<FixedOffset> {
+    Utc::now().with_timezone(&FixedOffset::east_opt(8 * 3600).unwrap())
+}
 
-fn main() {
-    // 横屏：设 framebuffer rotate=1（90°），后端 install 后读到 1024x758
-    #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
-    {
-        use std::os::unix::io::AsRawFd;
-        #[repr(C)]
-        #[derive(Default)]
-        struct FbVar {
-            xres: u32, yres: u32, xres_virtual: u32, yres_virtual: u32,
-            xoffset: u32, yoffset: u32, bits_per_pixel: u32, grayscale: u32,
-            red: [u32; 3], green: [u32; 3], blue: [u32; 3], transp: [u32; 3],
-            nonstd: u32, activate: u32, height: u32, width: u32, accel_flags: u32,
-            pixclock: u32, left_margin: u32, right_margin: u32, upper_margin: u32,
-            lower_margin: u32, hsync_len: u32, vsync_len: u32, sync: u32,
-            vmode: u32, rotate: u32, colorspace: u32, reserved: [u32; 4],
-        }
-        const FBIOSET_VSCREENINFO: libc::c_ulong = 0x4601;
-        const FBIOGET_VSCREENINFO: libc::c_ulong = 0x4600;
-        // 保持 fd 打开，防止驱动在关闭时重置 vinfo
-        static mut FB_FILE: *mut std::fs::File = std::ptr::null_mut();
-        if let Ok(fb) = std::fs::OpenOptions::new().read(true).write(true).open("/dev/fb0") {
-            let mut v = FbVar::default();
-            unsafe { libc::ioctl(fb.as_raw_fd(), FBIOGET_VSCREENINFO as _, &mut v as *mut _ as *mut libc::c_void); }
-            v.rotate = 2;
-            // 横屏：互换宽高，让 Slint 后端读到 1024x758
-            let tmp = v.xres; v.xres = v.yres; v.yres = tmp;
-            let tmp = v.xres_virtual; v.xres_virtual = v.yres_virtual; v.yres_virtual = tmp;
-            unsafe { libc::ioctl(fb.as_raw_fd(), FBIOSET_VSCREENINFO as _, &mut v as *mut _ as *mut libc::c_void); }
-            // 读回驱动实际设的值
-            let mut v2 = FbVar::default();
-            unsafe { libc::ioctl(fb.as_raw_fd(), FBIOGET_VSCREENINFO as _, &mut v2 as *mut _ as *mut libc::c_void); }
-            let _ = std::fs::write("/mnt/us/kwc-fb-debug.txt",
-                format!("before: xres={} yres={} xv={} yv={} rotate={}\nafter:  xres={} yres={} xv={} yv={} rotate={}\n",
-                    v.xres, v.yres, v.xres_virtual, v.yres_virtual, v.rotate,
-                    v2.xres, v2.yres, v2.xres_virtual, v2.yres_virtual, v2.rotate));
-            // 不关闭 fd——驱动在 fd 关闭时会重置 vinfo
-            unsafe {
-                let old = FB_FILE;
-                FB_FILE = Box::into_raw(Box::new(fb));
-                if !old.is_null() { drop(Box::from_raw(old)); }
+// ---------- 整月日历 ----------
+
+fn build_calendar(now: &chrono::DateTime<FixedOffset>) -> Vec<CalendarRow> {
+    let year = now.year();
+    let month = now.month();
+    let today = now.day();
+    let first = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
+    let next = NaiveDate::from_ymd_opt(year, if month == 12 { 1 } else { month + 1 }, 1).unwrap();
+    let days_in_month = (next - first).num_days() as usize;
+    let first_weekday = first.weekday().num_days_from_sunday() as usize;
+
+    let mut days: Vec<CalendarDay> = Vec::new();
+    let blank = || CalendarDay {
+        day: SharedString::new(),
+        label: SharedString::new(),
+        is_today: false,
+    };
+    for _ in 0..first_weekday {
+        days.push(blank());
+    }
+    for d in 1..=days_in_month {
+        let solar = Solar::from_ymd(year, month as i32, d as i32).unwrap();
+        let lunar = solar.lunar();
+        let label = if let Some(fest) = lunar.festivals().first() {
+            SharedString::from(*fest)
+        } else {
+            SharedString::from(lunar.day_in_chinese())
+        };
+        days.push(CalendarDay {
+            day: SharedString::from(d.to_string()),
+            label,
+            is_today: d as u32 == today,
+        });
+    }
+    while days.len() % 7 != 0 {
+        days.push(blank());
+    }
+    days.chunks(7)
+        .map(|c| CalendarRow {
+            cells: ModelRc::new(VecModel::from(c.to_vec())),
+        })
+        .collect()
+}
+
+// ---------- 地理位置（IP 定位） ----------
+
+fn fetch_location(agent: &ureq::Agent) -> String {
+    let resp = agent.get("http://cip.cc/").call();
+    if let Ok(resp) = resp {
+        if let Ok(text) = resp.into_string() {
+            for line in text.lines() {
+                if line.contains("城市") {
+                    if let Some(pos) = line.find(':').or(line.find('：')) {
+                        let city = line[pos + 1..].trim().to_string();
+                        if !city.is_empty() {
+                            return city;
+                        }
+                    }
+                }
             }
         }
     }
+    "济南".to_string()
+}
 
-    // 横屏：告诉后端用 1024x758 渲染（驱动内部仍用 758x1024，rotate=2 负责旋转）
+// ---------- 电量 ----------
+
+const FL_MAX: i32 = 24;
+
+fn read_frontlight() -> Option<i32> {
+    let out = std::process::Command::new("lipc-get-prop")
+        .args(["com.lab126.powerd", "flIntensity"])
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&out.stdout).trim().parse().ok()
+}
+
+const FL_BRIGHTNESS: &str = "/sys/class/backlight/max77696-bl/brightness";
+
+fn set_frontlight(v: i32) {
+    let v = v.clamp(0, FL_MAX);
+    // lipc 的 0 档实际写 sysfs brightness=1（PWM 最低档，暗处仍有微光），
+    // 只有直写 sysfs 0 才是真正关断前光。
+    if v == 0 {
+        let _ = std::fs::write(FL_BRIGHTNESS, "0");
+        return;
+    }
+    let _ = std::process::Command::new("lipc-set-prop")
+        .args(["com.lab126.powerd", "flIntensity"])
+        .arg(v.to_string())
+        .status();
+}
+
+fn fetch_battery() -> String {
+    // Kindle(PW2): max77696-battery/capacity；其他机型也走同目录，遍历取第一个可解析的
+    if let Ok(entries) = std::fs::read_dir("/sys/class/power_supply") {
+        for e in entries.flatten() {
+            let p = e.path().join("capacity");
+            if let Ok(s) = std::fs::read_to_string(&p) {
+                if let Ok(n) = s.trim().parse::<u32>() {
+                    return format!("电量 {}%", n);
+                }
+            }
+        }
+    }
+    String::new()
+}
+
+// ---------- 主入口 ----------
+
+fn main() {
+    // 横屏：framebuffer 的 vinfo 保持驱动原生（758x1024），
+    // 由后端在写入时旋转 90°，程序退出后书库不受影响。
     #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
     {
         unsafe {
@@ -250,7 +335,13 @@ fn main() {
     };
 
     let app = AppWindow::new().expect("failed to create AppWindow");
-    let agent = ureq::Agent::new();
+    // ponytail: 必须带超时。合盖休眠唤醒后 WiFi 未就绪时，无超时的 socket 读会永久阻塞
+    // 在 sk_wait_data，主线程冻结 → 时钟定时器一起停，屏幕从此再不刷新。
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(std::time::Duration::from_secs(5))
+        .timeout_read(std::time::Duration::from_secs(10))
+        .timeout_write(std::time::Duration::from_secs(10))
+        .build();
 
     // 后台线程监听输入事件（电源键/触屏），设标志位；主线程定时器检查并全刷
     #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
@@ -301,18 +392,54 @@ fn main() {
     std::mem::forget(backend);
 
     // 初始刷新
-    update_clock(&app);
+    update_clock(&app, &now_east8(), true);
     update_weather(&app, &agent);
+
+    // 亮度控制 + 退出
+    {
+        let fl = read_frontlight().unwrap_or(20);
+        app.set_brightness(fl);
+        set_frontlight(fl); // 启动时把 sysfs 对齐到 UI 值（0 档必须直写 0）
+
+        let weak = app.as_weak();
+        app.on_brightness_up(move || {
+            if let Some(app) = weak.upgrade() {
+                let v = (app.get_brightness() + 4).min(FL_MAX);
+                set_frontlight(v);
+                app.set_brightness(v);
+            }
+        });
+
+        let weak = app.as_weak();
+        app.on_brightness_down(move || {
+            if let Some(app) = weak.upgrade() {
+                let v = (app.get_brightness() - 4).max(0);
+                set_frontlight(v);
+                app.set_brightness(v);
+            }
+        });
+
+        app.on_quit(|| {
+            // 42 = 主动退出；run-kwc.sh 收到后恢复 Kindle 系统并不再重启。
+            // framebuffer 的 vinfo 我们一个字都没改，无需还原。
+            std::process::exit(42);
+        });
+    }
 
     // 时钟定时器（1s）+ 唤醒标志检查
     {
         let weak = app.as_weak();
         #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
         let wake_flag = Arc::clone(&wake_flag);
+        let mut last_day = 0i32;
         let clock_timer = Timer::default();
         clock_timer.start(TimerMode::Repeated, CLOCK_INTERVAL, move || {
             if let Some(app) = weak.upgrade() {
-                update_clock(&app);
+                let now = now_east8();
+                let day = now.day() as i32;
+                let day_changed = day != last_day;
+                last_day = day;
+                update_clock(&app, &now, day_changed);
                 #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
                 if wake_flag.swap(false, std::sync::atomic::Ordering::Relaxed) {
                     std::thread::sleep(std::time::Duration::from_millis(300));

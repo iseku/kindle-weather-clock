@@ -154,7 +154,12 @@ impl Platform for KindlePlatform {
         // logical pixels to the panel's physical pixels before sizing the window.
         // Keeping the scale uniform prevents text and touch targets from being
         // stretched when a Kindle has a slightly different aspect ratio.
-        let scale_factor = dashboard_scale_factor(frame_buffer.width, frame_buffer.height);
+        // KWC_SCALE overrides the computed scale (e.g. "1" for a landscape app
+        // whose design resolution equals the panel size, avoiding letterboxing).
+        let scale_factor = std::env::var("KWC_SCALE")
+            .ok()
+            .and_then(|s| s.parse::<f32>().ok())
+            .unwrap_or_else(|| dashboard_scale_factor(frame_buffer.width, frame_buffer.height));
         let _ = self
             .window
             .try_dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor });

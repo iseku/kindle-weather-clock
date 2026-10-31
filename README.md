@@ -1,133 +1,52 @@
-# Ferrink Home Assistant
+# Kindle 天气时钟
 
-Ferrink Home Assistant is a native, touch-controlled e-ink dashboard for
-jailbroken Kindle devices. It talks directly to a Home Assistant server,
-renders with Slint's software renderer, and writes to the Kindle framebuffer
-without a browser or web view.
+把闲置的 Kindle Paperwhite 2 改造成墨水屏天气时钟。
 
-<p align="center">
-  <a href="docs/images/dashboard-demo.png"><img src="docs/images/dashboard-demo.png" width="31%" alt="Ferrink Home Assistant climate controls"></a>
-  <a href="docs/images/lights-demo.png"><img src="docs/images/lights-demo.png" width="31%" alt="Ferrink Home Assistant light controls"></a>
-  <a href="docs/images/calendar-demo.png"><img src="docs/images/calendar-demo.png" width="31%" alt="Ferrink Home Assistant calendar"></a>
-</p>
+一屏显示日期、农历、当月日历、黄历宜忌、时钟、实时天气和三日预报；右侧有亮度调节和退出按钮，退出即回到原生书库。
 
-<p align="center"><sub>Climate · Lights · Calendar — host-rendered Slint demo data captured through the embedded MCP server.</sub></p>
-
-The dashboard includes:
-
-- five thermostat summaries with set-point, HVAC mode, and fan controls;
-- twenty light toggles and one independent fan toggle;
-- weather, battery, and the next seven calendar events;
-- bounded network requests and a two-minute refresh interval;
-- a neutral low-distraction sleep screen after inactivity; and
-- launch scripts that restore the stock Kindle foreground on exit.
-
-This repository contains the application and the modified Kindle Slint backend
-revision it was developed against. It intentionally contains no Home Assistant
-credentials, household entity IDs, device screenshots, or personal sleep
-image.
-
-## Configure entities
-
-Edit the generic `THERMOSTATS`, `LIGHTS`, and `LIVING_ROOM_FAN` values near the
-top of `app/src/main.rs`. Preserve the five-thermostat and twenty-light array
-lengths because the current UI is designed around those fixed grids.
-
-Calendar entities are discovered automatically. Weather is read from the first
-available Home Assistant weather entity.
-
-## Build
-
-Install the ARM target, Zig, and `cargo-zigbuild`, then build the static Kindle
-binary:
-
-```sh
-rustup target add armv7-unknown-linux-musleabihf
-cargo install cargo-zigbuild
-cargo zigbuild --release \
-  --target armv7-unknown-linux-musleabihf \
-  -p ferrink-home-assistant \
-  --locked
+```
+┌──────────────────────────┬──────────────────┐
+│ 2026年10月31日 星期六      │      01:14       │
+│ 农历 九月廿二              │   ☀ 晴 11.9℃     │
+│ 日 一 二 三 四 五 六       │  温度 11.9℃ 湿度 34% │
+│  1  2  3                 │  风力 2级   风向 东南风 │
+│  4  5  6  7  8  9 10      │                  │
+│  … 今天带方框              │  三天预报          │
+│ 宜 祭祀 平治道涂 馀事勿取   │  星期五 ☀ 12~23℃  │
+│ 忌 嫁娶 开市              │  星期六 ☁ 10~21℃  │
+│ 济南          电量 99%     │  星期日 ☁ 12~17℃  │
+└──────────────────────────┴──────────────────┘
 ```
 
-The artifact is written to:
+## 技术栈
 
-```text
-target/armv7-unknown-linux-musleabihf/release/ferrink-home-assistant
+- **Rust** + **Slint 1.17**（软件渲染器）
+- 自研 `slint-backend-kindle` 后端：framebuffer 写入、内部旋转、触摸转置、开机唤醒
+- 数据全部来自公开 HTTP 接口，不需要 Home Assistant
+
+## 快速开始
+
+```bash
+# 交叉编译（需要工作区的 .toolchain）
+cargo zigbuild --release --target armv7-unknown-linux-musleabihf
+
+# 部署（详见 docs/DESIGN.md §9）
+scp target/armv7-unknown-linux-musleabihf/release/kindle-weather-clock root@<kindle-ip>:/mnt/us/kwc.new
 ```
 
-## Configure the Kindle
+Kindle 上从 **KUAL → Weather Clock → Start Weather Clock** 启动，点屏幕右侧「退」返回书库。
 
-Create `/var/local/ferrink-home-assistant.env` on the Kindle with mode `0600`:
+## 文档
 
-```sh
-HASS_URL=http://home-assistant-address:8123
-HASS_TOKEN=your-long-lived-access-token
-```
+完整设计说明见 **[docs/DESIGN.md](docs/DESIGN.md)**：架构、显示层旋转方案、触摸坐标映射、退出恢复流程、构建部署与踩过的坑。
 
-You may also set `SLEEP_TIMEOUT_SECS` to a positive number. The default is 600
-seconds. Keep the token under `/var/local`; never put it in this repository or
-on the USB-visible userstore.
+## 环境变量
 
-## Install and run
+| 变量 | 值 | 作用 |
+|---|---|---|
+| `KWC_SCALE` | `1` | 强制满屏 |
+| `KWC_ROTATE` | `270` | 内部旋转方向 |
 
-Copy the binary and launcher to `/mnt/us`:
+## 许可证
 
-```sh
-scp target/armv7-unknown-linux-musleabihf/release/ferrink-home-assistant \
-  root@kindle:/mnt/us/
-scp launch-ferrink-home-assistant.sh root@kindle:/mnt/us/
-ssh root@kindle chmod +x \
-  /mnt/us/ferrink-home-assistant \
-  /mnt/us/launch-ferrink-home-assistant.sh
-```
-
-Run `/mnt/us/launch-ferrink-home-assistant.sh` in the foreground. The launcher
-temporarily takes ownership from the stock UI and restores it when the app
-exits normally. Kindle foreground replacement is inherently device- and
-firmware-sensitive; keep a working SSH connection and a stock recovery path.
-
-For KUAL, copy `kual/ferrink-home-assistant` into the Kindle's `extensions`
-directory after installing the binary and launcher above.
-
-## Development
-
-Host tests and formatting checks do not require a Kindle:
-
-```sh
-cargo fmt --all -- --check
-cargo test --workspace --locked
-cargo clippy --workspace --all-targets --locked -- -D warnings
-```
-
-Kindle release builds must use `cargo zigbuild`; a host sysroot is not an
-equivalent substitute for the target C headers and ABI.
-
-### Slint MCP inspection
-
-Slint 1.17.1 includes an optional embedded MCP server for inspecting the UI,
-simulating input, and capturing screenshots. Run the dashboard with built-in
-demo data and the headless software renderer like this:
-
-```sh
-SLINT_EMIT_DEBUG_INFO=1 \
-SLINT_MCP_PORT=9315 \
-SLINT_BACKEND=headless-software \
-SLINT_DASHBOARD_DEMO=1 \
-cargo run -p ferrink-home-assistant --features slint/mcp
-```
-
-Connect an MCP client to `http://127.0.0.1:9315/mcp`. Keep `mcp` as a
-command-line feature for development; it is not enabled in Kindle release
-builds.
-
-## Credits and licensing
-
-The Kindle backend is derived from
-[`slint-kindle-backend`](https://github.com/sverrejb/slint-kindle-backend)
-and retains its upstream authorship and dual MIT/Apache-2.0 licensing. UI icons
-are from Lucide and retain their ISC notice in `app/ui/icons/NOTICE.txt`.
-
-This independent project is not affiliated with or endorsed by Home Assistant,
-Nabu Casa, Amazon, or Slint. Product names are used only to describe
-compatibility.
+MIT OR Apache-2.0。框架层 `crates/slint-backend-kindle` 源自 [slint-kindle-backend](https://github.com/sverrejb/slint-kindle-backend)。

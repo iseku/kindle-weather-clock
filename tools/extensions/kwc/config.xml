@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <extension>
 	<information>
-		<name>Ferrink Home Assistant</name>
+		<name>Weather Clock</name>
 		<version>1.0</version>
-		<author>Ferrink contributors</author>
-		<id>FerrinkHomeAssistant</id>
+		<author>tony</author>
+		<id>kwc</id>
 	</information>
 	<menus>
 		<menu type="json" dynamic="true">menu.json</menu>

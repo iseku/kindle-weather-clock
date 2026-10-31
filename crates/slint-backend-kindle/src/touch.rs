@@ -74,6 +74,10 @@ pub(crate) struct TouchInput {
     max_x: f32,
     /// Maximum raw Y value reported by the touch controller (from EVIOCGABS).
     max_y: f32,
+    /// The controller reports in portrait axes while the screen is landscape
+    /// (PW2: touch 757x1023, screen 1024x758). Then raw X maps to screen Y and
+    /// raw Y maps to screen X, reversed.
+    transposed: bool,
 }
 
 impl TouchInput {
@@ -119,6 +123,11 @@ impl TouchInput {
             4095
         }) as f32;
 
+        logtouch(&format!(
+            "open max_x={} max_y={} screen={}x{} scale={}",
+            max_x as i32, max_y as i32, screen_width, screen_height, scale_factor
+        ));
+
         Ok(Self {
             file_descriptor: fd,
             active_slot: 0,
@@ -131,6 +140,7 @@ impl TouchInput {
             scale_factor,
             max_x,
             max_y,
+            transposed: max_x < max_y,
         })
     }
 
@@ -189,10 +199,19 @@ impl TouchInput {
                     self.active_slot = event.value;
                 }
                 (EVENT_ABSOLUTE_AXIS, TOUCH_POSITION_X) if self.should_update_position() => {
-                    self.x = (event.value as f32) * self.screen_width / self.max_x;
+                    if self.transposed {
+                        self.y = (event.value as f32) * self.screen_height / self.max_x;
+                    } else {
+                        self.x = (event.value as f32) * self.screen_width / self.max_x;
+                    }
                 }
                 (EVENT_ABSOLUTE_AXIS, TOUCH_POSITION_Y) if self.should_update_position() => {
-                    self.y = (event.value as f32) * self.screen_height / self.max_y;
+                    if self.transposed {
+                        self.x = ((self.max_y - event.value as f32) * self.screen_width / self.max_y)
+                            .max(0.0);
+                    } else {
+                        self.y = (event.value as f32) * self.screen_height / self.max_y;
+                    }
                 }
                 (EVENT_ABSOLUTE_AXIS, TOUCH_TRACKING_ID) => {
                     if event.value == -1 {
@@ -284,5 +303,16 @@ impl Drop for TouchInput {
         // Release the exclusive grab before closing
         unsafe { libc::ioctl(self.file_descriptor, EVIOCGRAB as _, 0 as libc::c_int) };
         unsafe { libc::close(self.file_descriptor) };
+    }
+}
+
+fn logtouch(msg: &str) {
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/mnt/us/kwc-touch.log")
+    {
+        let _ = writeln!(f, "{msg}");
     }
 }

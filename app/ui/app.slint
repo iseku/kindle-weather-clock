@@ -6,16 +6,25 @@ export struct ForecastDay {
     high: string,
 }
 
+export struct CalendarDay {
+    day: string,
+    label: string,
+    is_today: bool,
+}
+
+export struct CalendarRow {
+    cells: [CalendarDay],
+}
+
 export component AppWindow inherits Window {
     width: 1024px;
     height: 758px;
     title: "Kindle Weather Clock";
-    background: #000000;
+    background: #ffffff;
 
     // Clock & calendar
     in property <string> time: "";
     in property <string> date: "";
-    in property <string> weekday: "";
     in property <string> lunar: "";
     in property <string> festival: "";
     in property <string> yi: "";
@@ -25,111 +34,240 @@ export component AppWindow inherits Window {
     in property <string> weather-kind: "sun";
     in property <string> weather-text: "";
     in property <string> temp: "";
-    in property <string> wind: "";
+    in property <string> wind-dir: "";
+    in property <string> wind-force: "";
     in property <string> humidity: "";
-    in property <string> pressure: "";
-    in property <string> aqi: "";
 
-    // Forecast
+    // Location & battery
+    in property <string> location: "";
+    in property <string> battery: "";
+
+    // Models
     in property <[ForecastDay]> forecast: [];
+    in property <[CalendarRow]> calendar: [];
+
+    // 控制
+    in property <int> brightness: 20;
+    callback brightness-up();
+    callback brightness-down();
+    callback quit();
 
     HorizontalLayout {
-        padding: 30px;
-        spacing: 40px;
+        padding: 24px;
+        spacing: 24px;
 
-        // Left: Clock + Calendar
+        // ===== LEFT 60%: 日期 / 日历 / 黄历 =====
         VerticalLayout {
-            spacing: 16px;
-            horizontal-stretch: 3;
+            spacing: 14px;
+            horizontal-stretch: 6;
             vertical-stretch: 1;
 
+            // 日期区
+            VerticalLayout {
+                spacing: 12px;
+                Text { text: root.date; font-size: 42px; font-weight: 700; color: #cc0000; }
+                Text { text: root.lunar; font-size: 30px; color: #000000; }
+            }
+
+            // 弹性空白：把日历块推到中间
+            Rectangle { vertical-stretch: 1; }
+
+            // 日历区
+            VerticalLayout {
+                spacing: 3px;
+
+                HorizontalLayout {
+                    spacing: 3px;
+                    vertical-stretch: 0;
+                    alignment: start;
+                    Rectangle { width: 76px; height: 34px; background: #000000; Text { text: "日"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
+                    Rectangle { width: 76px; height: 34px; background: #000000; Text { text: "一"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
+                    Rectangle { width: 76px; height: 34px; background: #000000; Text { text: "二"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
+                    Rectangle { width: 76px; height: 34px; background: #000000; Text { text: "三"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
+                    Rectangle { width: 76px; height: 34px; background: #000000; Text { text: "四"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
+                    Rectangle { width: 76px; height: 34px; background: #000000; Text { text: "五"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
+                    Rectangle { width: 76px; height: 34px; background: #000000; Text { text: "六"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
+                }
+
+                for row in root.calendar : HorizontalLayout {
+                    spacing: 3px;
+                    vertical-stretch: 0;
+                    alignment: start;
+                    for cell in row.cells : Rectangle {
+                        width: 76px;
+                        height: 72px;
+                        border-width: cell.is_today ? 2px : 0px;
+                        border-color: #000000;
+                        VerticalLayout {
+                            padding: 3px;
+                            spacing: 0px;
+                            Text { text: cell.day; font-size: 27px; horizontal-alignment: center; color: #000000; }
+                            Text { text: cell.label; font-size: 16px; horizontal-alignment: center; color: #555555; }
+                        }
+                    }
+                }
+            }
+
+            // 弹性空白：黄历贴底
+            Rectangle { vertical-stretch: 1; }
+
+            // 黄历区
+            VerticalLayout {
+                spacing: 12px;
+                Text { text: root.yi; font-size: 26px; color: #000000; wrap: word-wrap; }
+                Text { text: root.ji; font-size: 26px; color: #000000; wrap: word-wrap; }
+                HorizontalLayout {
+                    spacing: 16px;
+                    Text { text: root.location; font-size: 24px; color: #000000; }
+                    Text { text: root.battery; font-size: 24px; color: #000000; }
+                }
+            }
+        }
+
+        // ===== RIGHT 40%: 时钟 / 当前天气 / 3日天气 =====
+        VerticalLayout {
+            spacing: 18px;
+            horizontal-stretch: 4;
+            vertical-stretch: 1;
+
+            // 时钟区
             Text {
                 text: root.time;
-                font-size: 176px;
+                font-size: 162px;
                 font-weight: 700;
-                color: #ffffff;
+                color: #000000;
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
 
-            HorizontalLayout {
-                spacing: 20px;
-
-                Text { text: root.weekday; font-size: 40px; font-weight: 700; color: #ffffff; }
-                Text { text: root.date; font-size: 36px; color: #ffffff; }
-            }
-
-            Text { text: root.lunar; font-size: 32px; color: #ffffff; horizontal-alignment: center; }
-            Text { text: root.festival; font-size: 32px; color: #ffffff; horizontal-alignment: center; }
-            Text { text: root.yi; font-size: 26px; color: #ffffff; wrap: word-wrap; }
-            Text { text: root.ji; font-size: 26px; color: #ffffff; wrap: word-wrap; }
-        }
-
-        // Right: Weather + Forecast
-        VerticalLayout {
-            spacing: 20px;
-            horizontal-stretch: 2;
-            vertical-stretch: 1;
-
-            // Weather current
-            HorizontalLayout {
-                spacing: 16px;
-
-                Rectangle {
-                    width: 90px;
-                    height: 90px;
-
-                    if root.weather-kind == "sun": Image { width: 90px; height: 90px; source: @image-url("icons/sun.svg"); image-fit: contain; }
-                    if root.weather-kind == "cloud-sun": Image { width: 90px; height: 90px; source: @image-url("icons/cloud-sun.svg"); image-fit: contain; }
-                    if root.weather-kind == "cloud": Image { width: 90px; height: 90px; source: @image-url("icons/cloud.svg"); image-fit: contain; }
-                    if root.weather-kind == "cloud-rain": Image { width: 90px; height: 90px; source: @image-url("icons/cloud-rain.svg"); image-fit: contain; }
-                    if root.weather-kind == "cloud-rain-wind": Image { width: 90px; height: 90px; source: @image-url("icons/cloud-rain-wind.svg"); image-fit: contain; }
-                    if root.weather-kind == "cloud-lightning": Image { width: 90px; height: 90px; source: @image-url("icons/cloud-lightning.svg"); image-fit: contain; }
-                    if root.weather-kind == "snowflake": Image { width: 90px; height: 90px; source: @image-url("icons/snowflake.svg"); image-fit: contain; }
-                    if root.weather-kind == "cloud-fog": Image { width: 90px; height: 90px; source: @image-url("icons/cloud-fog.svg"); image-fit: contain; }
-                }
-
-                VerticalLayout {
-                    spacing: 6px;
-                    horizontal-stretch: 1;
-
-                    Text { text: root.weather-text; font-size: 36px; font-weight: 700; color: #ffffff; }
-                    Text { text: root.temp; font-size: 48px; font-weight: 700; color: #ffffff; }
-                    Text { text: root.wind; font-size: 26px; color: #ffffff; }
-                    Text { text: root.humidity; font-size: 26px; color: #ffffff; }
-                    Text { text: root.aqi; font-size: 26px; color: #ffffff; }
-                }
-            }
-
-            // Forecast
+            // 当前天气区
             VerticalLayout {
                 spacing: 10px;
                 vertical-stretch: 1;
 
-                Text { text: "三天预报"; font-size: 30px; font-weight: 700; color: #ffffff; }
-
-                for day in root.forecast : HorizontalLayout {
-                    spacing: 10px;
-
-                    Text { text: day.week; font-size: 26px; width: 70px; color: #ffffff; }
-
+                HorizontalLayout {
+                    spacing: 12px;
                     Rectangle {
-                        width: 36px;
-                        height: 36px;
-
-                        if day.icon == "sun": Image { width: 36px; height: 36px; source: @image-url("icons/sun.svg"); image-fit: contain; }
-                        if day.icon == "cloud-sun": Image { width: 36px; height: 36px; source: @image-url("icons/cloud-sun.svg"); image-fit: contain; }
-                        if day.icon == "cloud": Image { width: 36px; height: 36px; source: @image-url("icons/cloud.svg"); image-fit: contain; }
-                        if day.icon == "cloud-rain": Image { width: 36px; height: 36px; source: @image-url("icons/cloud-rain.svg"); image-fit: contain; }
-                        if day.icon == "cloud-lightning": Image { width: 36px; height: 36px; source: @image-url("icons/cloud-lightning.svg"); image-fit: contain; }
-                        if day.icon == "snowflake": Image { width: 36px; height: 36px; source: @image-url("icons/snowflake.svg"); image-fit: contain; }
-                        if day.icon == "cloud-fog": Image { width: 36px; height: 36px; source: @image-url("icons/cloud-fog.svg"); image-fit: contain; }
+                        width: 106px;
+                        height: 106px;
+                        if root.weather-kind == "sun": Image { width: 106px; height: 106px; source: @image-url("icons/sun.svg"); image-fit: contain; }
+                        if root.weather-kind == "cloud-sun": Image { width: 106px; height: 106px; source: @image-url("icons/cloud-sun.svg"); image-fit: contain; }
+                        if root.weather-kind == "cloud": Image { width: 106px; height: 106px; source: @image-url("icons/cloud.svg"); image-fit: contain; }
+                        if root.weather-kind == "cloud-rain": Image { width: 106px; height: 106px; source: @image-url("icons/cloud-rain.svg"); image-fit: contain; }
+                        if root.weather-kind == "cloud-rain-wind": Image { width: 106px; height: 106px; source: @image-url("icons/cloud-rain-wind.svg"); image-fit: contain; }
+                        if root.weather-kind == "cloud-lightning": Image { width: 106px; height: 106px; source: @image-url("icons/cloud-lightning.svg"); image-fit: contain; }
+                        if root.weather-kind == "snowflake": Image { width: 106px; height: 106px; source: @image-url("icons/snowflake.svg"); image-fit: contain; }
+                        if root.weather-kind == "cloud-fog": Image { width: 106px; height: 106px; source: @image-url("icons/cloud-fog.svg"); image-fit: contain; }
                     }
+                    VerticalLayout {
+                        spacing: 4px;
+                        horizontal-stretch: 1;
+                        Text { text: root.weather-text; font-size: 48px; font-weight: 700; color: #000000; }
+                        Text { text: root.temp; font-size: 68px; font-weight: 700; color: #000000; }
+                    }
+                }
 
-                    Text { text: day.text; font-size: 26px; color: #ffffff; }
-                    Text { text: day.low + "~" + day.high + "°C"; font-size: 26px; color: #ffffff; }
+                HorizontalLayout {
+                    spacing: 44px;
+                    VerticalLayout {
+                        width: 165px;
+                        spacing: 0px;
+                        vertical-stretch: 0;
+                        Text { text: "温度"; font-size: 35px; color: #555555; }
+                        Text { text: root.temp; font-size: 30px; font-weight: 700; color: #000000; }
+                    }
+                    VerticalLayout {
+                        width: 165px;
+                        spacing: 0px;
+                        vertical-stretch: 0;
+                        Text { text: "湿度"; font-size: 35px; color: #555555; }
+                        Text { text: root.humidity; font-size: 30px; font-weight: 700; color: #000000; }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 44px;
+                    VerticalLayout {
+                        width: 165px;
+                        spacing: 0px;
+                        vertical-stretch: 0;
+                        Text { text: "风力"; font-size: 35px; color: #555555; }
+                        Text { text: root.wind-force; font-size: 30px; font-weight: 700; color: #000000; }
+                    }
+                    VerticalLayout {
+                        width: 165px;
+                        spacing: 0px;
+                        vertical-stretch: 0;
+                        Text { text: "风向"; font-size: 35px; color: #555555; }
+                        Text { text: root.wind-dir; font-size: 30px; font-weight: 700; color: #000000; }
+                    }
                 }
             }
+
+            // 3日天气区
+            VerticalLayout {
+                spacing: 8px;
+                Text { text: "三天预报"; font-size: 26px; font-weight: 700; color: #000000; }
+                for day in root.forecast : HorizontalLayout {
+                    spacing: 10px;
+                    Text { text: day.week; font-size: 22px; width: 64px; color: #000000; }
+                    Rectangle {
+                        width: 32px;
+                        height: 32px;
+                        if day.icon == "sun": Image { width: 32px; height: 32px; source: @image-url("icons/sun.svg"); image-fit: contain; }
+                        if day.icon == "cloud-sun": Image { width: 32px; height: 32px; source: @image-url("icons/cloud-sun.svg"); image-fit: contain; }
+                        if day.icon == "cloud": Image { width: 32px; height: 32px; source: @image-url("icons/cloud.svg"); image-fit: contain; }
+                        if day.icon == "cloud-rain": Image { width: 32px; height: 32px; source: @image-url("icons/cloud-rain.svg"); image-fit: contain; }
+                        if day.icon == "cloud-lightning": Image { width: 32px; height: 32px; source: @image-url("icons/cloud-lightning.svg"); image-fit: contain; }
+                        if day.icon == "snowflake": Image { width: 32px; height: 32px; source: @image-url("icons/snowflake.svg"); image-fit: contain; }
+                        if day.icon == "cloud-fog": Image { width: 32px; height: 32px; source: @image-url("icons/cloud-fog.svg"); image-fit: contain; }
+                    }
+                    Text { text: day.text; font-size: 22px; color: #000000; }
+                    Text { text: day.low + "~" + day.high + "℃"; font-size: 22px; color: #000000; }
+                }
+            }
+        }
+    }
+
+    // ===== 右侧控制条 =====
+    VerticalLayout {
+        x: root.width - 24px - 58px;
+        y: 250px;
+        width: 58px;
+        spacing: 8px;
+
+        Rectangle {
+            width: 58px;
+            height: 64px;
+            background: #ffffff;
+            border-width: 2px;
+            border-color: #000000;
+            Text { text: "+"; font-size: 40px; font-weight: 700; color: #000000; horizontal-alignment: center; vertical-alignment: center; }
+            TouchArea { clicked => { root.brightness-up(); } }
+        }
+        Rectangle {
+            width: 58px;
+            height: 44px;
+            background: #ffffff;
+            border-width: 2px;
+            border-color: #000000;
+            Text { text: root.brightness; font-size: 26px; font-weight: 700; color: #000000; horizontal-alignment: center; vertical-alignment: center; }
+        }
+        Rectangle {
+            width: 58px;
+            height: 64px;
+            background: #ffffff;
+            border-width: 2px;
+            border-color: #000000;
+            Text { text: "−"; font-size: 40px; font-weight: 700; color: #000000; horizontal-alignment: center; vertical-alignment: center; }
+            TouchArea { clicked => { root.brightness-down(); } }
+        }
+        Rectangle { width: 58px; height: 20px; background: transparent; }
+        Rectangle {
+            width: 58px;
+            height: 64px;
+            background: #000000;
+            Text { text: "退"; font-size: 30px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; }
+            TouchArea { clicked => { root.quit(); } }
         }
     }
 }
