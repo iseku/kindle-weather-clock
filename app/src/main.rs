@@ -140,8 +140,10 @@ fn set_wifi(on: bool) {
         .status();
 }
 
+/// 取数日志：带东八区时间戳，写进 run-kwc.sh 重定向的 kwc.log，
+/// 用来验证「有没有按时开 WiFi 取到天气」。
 fn log(msg: &str) {
-    eprintln!("[kwc] {}", msg);
+    eprintln!("[{}] {}", now_east8().format("%m-%d %H:%M:%S"), msg);
 }
 
 /// 上网取数据：本来没网就开 WiFi、取完再关掉，本来有网就不动它。
@@ -149,7 +151,8 @@ fn log(msg: &str) {
 /// 实测飞行模式关闭后要约 30 秒才真正能联网（不只关联，DNS/路由也要就绪），
 /// 所以等到默认路由出现后还要再稳 3 秒，总共最多等 45 秒；等不到就直接跳过，
 /// 保留上一次的天气数据，不拿陈旧连接去撞墙。
-fn with_network<T>(f: impl FnOnce() -> T) -> T {
+fn with_network(mut f: impl FnMut() -> bool) -> bool {
+    let mut online = true;
     if !has_default_route() {
         log("无网，打开 WiFi");
         set_wifi(true);
@@ -167,13 +170,23 @@ fn with_network<T>(f: impl FnOnce() -> T) -> T {
             set_wifi(false);
             return f();
         }
+        online = false;
         log("网络就绪");
-        std::thread::sleep(std::time::Duration::from_secs(2)); // 路由有了再稳一下
+        // 路由出现不等于能上网：DNS/HTTP 还要几秒才通，实测紧接着取数会失败
+        std::thread::sleep(std::time::Duration::from_secs(5));
     }
-    let out = f();
-    set_wifi(false); // 取完就关：省电模式的本意，设备平时离线
-    log("取数完成，关闭 WiFi");
-    out
+    let mut ok = f();
+    if !ok && !online {
+        // 刚开网的第一发经常撞在"路由有了但 DNS 没好"的窗口上，重试一次
+        log("取数失败，3 秒后重试");
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        ok = f();
+    }
+    if !online {
+        set_wifi(false); // 取完就关：省电模式的本意，设备平时离线
+        log("关闭 WiFi");
+    }
+    ok
 }
 
 fn wifi_is_on() -> bool {
@@ -200,14 +213,19 @@ fn update_weather(app: &AppWindow, agent: &ureq::Agent) {
     app.set_wifi(SharedString::from(wifi_label()));
 }
 
-fn update_weather_inner(app: &AppWindow, agent: &ureq::Agent) {
+fn update_weather_inner(app: &AppWindow, agent: &ureq::Agent) -> bool {
+    let mut got = false;
     if let Some(sk) = fetch_realtime(agent) {
+        got = true;
         app.set_weather_kind(SharedString::from(weather_kind(&sk.weather)));
         app.set_weather_text(SharedString::from(sk.weather.clone()));
         app.set_temp(SharedString::from(format!("{}℃", sk.temp)));
-        app.set_wind_dir(SharedString::from(sk.WD));
-        app.set_wind_force(SharedString::from(sk.WS));
+        app.set_wind_dir(SharedString::from(sk.WD.clone()));
+        app.set_wind_force(SharedString::from(sk.WS.clone()));
         app.set_humidity(SharedString::from(format!("{}%", sk.SD.trim_end_matches('%'))));
+        log(&format!("实况 {} {}℃ 湿度{} 风{}{}", sk.weather, sk.temp, sk.SD, sk.WD, sk.WS));
+    } else {
+        log("实况取数失败，保留上次数据");
     }
 
     app.set_location(SharedString::from(fetch_location(agent)));
@@ -225,6 +243,7 @@ fn update_weather_inner(app: &AppWindow, agent: &ureq::Agent) {
         })
         .collect();
     app.set_forecast(ModelRc::new(VecModel::from(rows)));
+    got
 }
 
 // ---------- 时钟 + 农历 ----------

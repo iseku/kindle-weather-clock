@@ -3,7 +3,6 @@ killall -STOP awesome 2>/dev/null
 killall -STOP cvm 2>/dev/null
 lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null
 lipc-set-prop com.lab126.pillow disableEnablePillow disable 2>/dev/null
-lipc-set-prop com.lab126.cmd wirelessEnable 1 2>/dev/null
 export KWC_SCALE=1
 export KWC_ROTATE=270
 sleep 1
