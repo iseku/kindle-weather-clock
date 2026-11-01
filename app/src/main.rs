@@ -130,14 +130,44 @@ fn has_default_route() -> bool {
         .unwrap_or(false)
 }
 
+/// 跑外部命令并限时。lipc 实测能卡两分钟不返回（关闭 WiFi 时等 framework 响应），
+/// 卡住会把取数线程一起拖死，超过 timeout 直接 kill。
+fn run_with_timeout(cmd: &mut std::process::Command, timeout: Duration) -> Option<String> {
+    use std::io::Read;
+    use std::process::Stdio;
+    cmd.stdout(Stdio::piped()).stderr(Stdio::null());
+    let mut child = cmd.spawn().ok()?;
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(_) => return None,
+        }
+    }
+    let mut out = String::new();
+    if let Some(mut s) = child.stdout.take() {
+        let _ = s.read_to_string(&mut out);
+    }
+    Some(out.trim().to_string())
+}
+
 fn set_wifi(on: bool) {
-    let _ = std::process::Command::new("lipc-set-prop")
-        .args([
+    let _ = run_with_timeout(
+        std::process::Command::new("lipc-set-prop").args([
             "com.lab126.cmd",
             "wirelessEnable",
             if on { "1" } else { "0" },
-        ])
-        .status();
+        ]),
+        Duration::from_secs(8),
+    );
 }
 
 /// 取数日志：带东八区时间戳，写进 run-kwc.sh 重定向的 kwc.log，
@@ -188,22 +218,20 @@ fn with_network(mut f: impl FnMut() -> bool) -> bool {
 }
 
 fn wifi_is_on() -> bool {
-    std::process::Command::new("lipc-get-prop")
-        .args(["com.lab126.cmd", "wirelessEnable"])
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "1")
-        .unwrap_or(false)
+    run_with_timeout(
+        std::process::Command::new("lipc-get-prop").args(["com.lab126.cmd", "wirelessEnable"]),
+        Duration::from_secs(5),
+    )
+    .map(|s| s == "1")
+    .unwrap_or(false)
 }
 
 fn wifi_label() -> String {
-    let on = std::process::Command::new("lipc-get-prop")
-        .args(["com.lab126.cmd", "wirelessEnable"])
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_default();
-    if on == "1" { "WiFi".to_string() } else { "飞行".to_string() }
+    if wifi_is_on() {
+        "WiFi".to_string()
+    } else {
+        "飞行".to_string()
+    }
 }
 
 /// 一次取数拿到的全部数据（纯值类型，可以跨线程传）
@@ -415,14 +443,20 @@ fn build_calendar(now: &chrono::DateTime<FixedOffset>) -> Vec<CalendarRow> {
 // ---------- 地理位置（IP 定位） ----------
 
 fn fetch_location(agent: &ureq::Agent) -> String {
-    let resp = agent.get("http://cip.cc/").call();
-    if let Ok(resp) = resp {
+    // IP 定位几乎不随时间变：成功取到一次就缓存，之后每轮少发一次请求，
+    // 也就少一次卡死的机会（cip.cc 的 DNS 卡死过一次）。
+    static CACHE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    if let Some(v) = CACHE.get() {
+        return v.clone();
+    }
+    if let Ok(resp) = agent.get("http://cip.cc/").call() {
         if let Ok(text) = resp.into_string() {
             for line in text.lines() {
                 if line.contains("城市") {
                     if let Some(pos) = line.find(':').or(line.find('：')) {
                         let city = line[pos + 1..].trim().to_string();
                         if !city.is_empty() {
+                            let _ = CACHE.set(city.clone());
                             return city;
                         }
                     }
@@ -438,11 +472,12 @@ fn fetch_location(agent: &ureq::Agent) -> String {
 const FL_MAX: i32 = 24;
 
 fn read_frontlight() -> Option<i32> {
-    let out = std::process::Command::new("lipc-get-prop")
-        .args(["com.lab126.powerd", "flIntensity"])
-        .output()
-        .ok()?;
-    String::from_utf8_lossy(&out.stdout).trim().parse().ok()
+    run_with_timeout(
+        std::process::Command::new("lipc-get-prop").args(["com.lab126.powerd", "flIntensity"]),
+        Duration::from_secs(5),
+    )?
+    .parse()
+    .ok()
 }
 
 const FL_BRIGHTNESS: &str = "/sys/class/backlight/max77696-bl/brightness";
@@ -455,10 +490,12 @@ fn set_frontlight(v: i32) {
         let _ = std::fs::write(FL_BRIGHTNESS, "0");
         return;
     }
-    let _ = std::process::Command::new("lipc-set-prop")
-        .args(["com.lab126.powerd", "flIntensity"])
-        .arg(v.to_string())
-        .status();
+    let _ = run_with_timeout(
+        std::process::Command::new("lipc-set-prop")
+            .args(["com.lab126.powerd", "flIntensity"])
+            .arg(v.to_string()),
+        Duration::from_secs(5),
+    );
 }
 
 fn fetch_battery() -> String {
