@@ -203,7 +203,9 @@ if transposed {
 
 **踩过的坑**：`update_clock()` 原本每秒都 `set_calendar(ModelRc::new(...))`，新建的 `ModelRc` 让 Slint 判定属性变更，于是墨水屏**每秒刷一次整块日历**，实测一晚上掉 33% 电（CPU 8%）。改成传入 `day_changed` 参数、只在跨天时重建后，CPU 降到 0.95%。
 
-网络请求同理会卡住主线程：`ureq` 默认**无超时**，连接半死时 `read()` 永久阻塞在 `sk_wait_data`，1 秒时钟定时器跟着停，屏幕从此不再刷新。必须显式设 `timeout_connect/read/write`。
+网络请求同理会卡住主线程：`ureq` 默认**无超时**，连接半死时 `read()` 永久阻塞在 `sk_wait_data`，1 秒时钟定时器跟着停，屏幕从此不再刷新。显式设 `timeout_connect/read/write` 只挡住了一半。
+
+**唯一可靠的做法是把取数整个搬出 UI 线程**（`fetch_snapshot` / `apply_snapshot` / `spawn_weather_update`）。2026-11-01 又卡死一次：日志停在 `实况取数成功` 之后、`关闭 WiFi` 之前，主线程 `wchan=sk_wait_data` 挂了 2.5 小时 —— `fetch_location`（cip.cc）的 DNS 解析不受 ureq 超时覆盖，musl 的 resolver 会一直等下去。现在定时器只负责 spawn 线程，取完用 `slint::invoke_from_event_loop` 回主线程写属性；`AtomicU64` 记本轮开始时间，超过 300 秒视为卡死、允许重开一轮（卡住的线程救不回来，但时钟不会跟着停）。
 
 ### 6.3 时区（必读）
 

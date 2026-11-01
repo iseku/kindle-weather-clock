@@ -208,31 +208,61 @@ fn wifi_label() -> String {
     if on == "1" { "WiFi".to_string() } else { "飞行".to_string() }
 }
 
-fn update_weather(app: &AppWindow, agent: &ureq::Agent) {
-    with_network(|| update_weather_inner(app, agent));
-    app.set_wifi(SharedString::from(wifi_label()));
+/// 一次取数拿到的全部数据（纯值类型，可以跨线程传）
+struct Snapshot {
+    sk: Option<Sk2d>,
+    location: String,
+    battery: String,
+    forecast: Vec<ItboyDay>,
+    wifi: String,
 }
 
-fn update_weather_inner(app: &AppWindow, agent: &ureq::Agent) -> bool {
-    let mut got = false;
-    if let Some(sk) = fetch_realtime(agent) {
-        got = true;
+/// 在后台线程里跑：只做网络和文件 IO，不碰任何 Slint 类型。
+///
+/// ponytail: 网络请求会永久卡死（实测主线程 wchan=sk_wait_data 挂了 2.5 小时，
+/// musl 的 DNS 解析不受 ureq 超时覆盖），所以绝不能留在 UI 线程上 ——
+/// 一卡住连时钟都停了。
+fn fetch_snapshot(agent: &ureq::Agent) -> Snapshot {
+    let mut snap = Snapshot {
+        sk: None,
+        location: String::new(),
+        battery: String::new(),
+        forecast: Vec::new(),
+        wifi: String::new(),
+    };
+    with_network(|| {
+        snap.sk = fetch_realtime(agent);
+        match &snap.sk {
+            Some(sk) => log(&format!(
+                "实况 {} {}℃ 湿度{} 风{}{}",
+                sk.weather, sk.temp, sk.SD, sk.WD, sk.WS
+            )),
+            None => log("实况取数失败，保留上次数据"),
+        }
+        snap.location = fetch_location(agent);
+        snap.forecast = fetch_forecast(agent);
+        snap.sk.is_some()
+    });
+    snap.battery = fetch_battery();
+    snap.wifi = wifi_label();
+    snap
+}
+
+/// 主线程：把取到的数据写进 UI 属性。
+fn apply_snapshot(app: &AppWindow, snap: Snapshot) {
+    if let Some(sk) = snap.sk {
         app.set_weather_kind(SharedString::from(weather_kind(&sk.weather)));
         app.set_weather_text(SharedString::from(sk.weather.clone()));
         app.set_temp(SharedString::from(format!("{}℃", sk.temp)));
         app.set_wind_dir(SharedString::from(sk.WD.clone()));
         app.set_wind_force(SharedString::from(sk.WS.clone()));
         app.set_humidity(SharedString::from(format!("{}%", sk.SD.trim_end_matches('%'))));
-        log(&format!("实况 {} {}℃ 湿度{} 风{}{}", sk.weather, sk.temp, sk.SD, sk.WD, sk.WS));
-    } else {
-        log("实况取数失败，保留上次数据");
     }
-
-    app.set_location(SharedString::from(fetch_location(agent)));
-    app.set_battery(SharedString::from(fetch_battery()));
-
-    let forecast = fetch_forecast(agent);
-    let rows: Vec<ForecastDay> = forecast
+    app.set_location(SharedString::from(snap.location));
+    app.set_battery(SharedString::from(snap.battery));
+    app.set_wifi(SharedString::from(snap.wifi));
+    let rows: Vec<ForecastDay> = snap
+        .forecast
         .into_iter()
         .map(|d| ForecastDay {
             week: SharedString::from(d.week),
@@ -243,7 +273,41 @@ fn update_weather_inner(app: &AppWindow, agent: &ureq::Agent) -> bool {
         })
         .collect();
     app.set_forecast(ModelRc::new(VecModel::from(rows)));
-    got
+}
+
+/// 起线程取数，回来后回主线程刷新。
+///
+/// `busy` 存本轮开始的 epoch 秒；超过 300 秒仍是旧值说明上一轮卡死了，
+/// 允许再起一轮（卡住的线程救不回来，但界面不会跟着停）。
+fn spawn_weather_update(
+    weak: slint::Weak<AppWindow>,
+    agent: ureq::Agent,
+    busy: std::sync::Arc<std::sync::atomic::AtomicU64>,
+) {
+    use std::sync::atomic::Ordering;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let prev = busy.load(Ordering::Relaxed);
+    if prev != 0 && now < prev + 300 {
+        log("上一轮取数还没回来，跳过");
+        return;
+    }
+    busy.store(now, Ordering::Relaxed);
+    std::thread::spawn(move || {
+        let snap = fetch_snapshot(&agent);
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(app) = weak.upgrade() {
+                apply_snapshot(&app, snap);
+                #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
+                unsafe {
+                    (&*KINDLE_BACKEND).request_full_refresh();
+                }
+            }
+            busy.store(0, Ordering::Relaxed);
+        });
+    });
 }
 
 // ---------- 时钟 + 农历 ----------
@@ -494,8 +558,9 @@ fn main() {
     std::mem::forget(backend);
 
     // 初始刷新
+    let weather_busy = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     update_clock(&app, &now_east8(), true);
-    update_weather(&app, &agent);
+    spawn_weather_update(app.as_weak(), agent.clone(), weather_busy.clone());
 
     // 亮度控制 + 退出
     {
@@ -577,14 +642,12 @@ fn main() {
     {
         let weak = app.as_weak();
         let agent = agent.clone();
+        let weather_busy = weather_busy.clone();
         #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
         let weather_timer = {
             let t = Timer::default();
             t.start(TimerMode::Repeated, WEATHER_INTERVAL, move || {
-                if let Some(app) = weak.upgrade() {
-                    update_weather(&app, &agent);
-                    unsafe { (&*KINDLE_BACKEND).request_full_refresh(); }
-                }
+                spawn_weather_update(weak.clone(), agent.clone(), weather_busy.clone());
             });
             t
         };
