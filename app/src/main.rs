@@ -152,7 +152,6 @@ fn log(msg: &str) {
 /// 所以等到默认路由出现后还要再稳 3 秒，总共最多等 45 秒；等不到就直接跳过，
 /// 保留上一次的天气数据，不拿陈旧连接去撞墙。
 fn with_network(mut f: impl FnMut() -> bool) -> bool {
-    let mut online = true;
     if !has_default_route() {
         log("无网，打开 WiFi");
         set_wifi(true);
@@ -170,22 +169,21 @@ fn with_network(mut f: impl FnMut() -> bool) -> bool {
             set_wifi(false);
             return f();
         }
-        online = false;
         log("网络就绪");
         // 路由出现不等于能上网：DNS/HTTP 还要几秒才通，实测紧接着取数会失败
         std::thread::sleep(std::time::Duration::from_secs(5));
     }
     let mut ok = f();
-    if !ok && !online {
+    if !ok {
         // 刚开网的第一发经常撞在"路由有了但 DNS 没好"的窗口上，重试一次
         log("取数失败，3 秒后重试");
         std::thread::sleep(std::time::Duration::from_secs(3));
         ok = f();
     }
-    if !online {
-        set_wifi(false); // 取完就关：省电模式的本意，设备平时离线
-        log("关闭 WiFi");
-    }
+    // 取完总是关：设备平时就该离线，WiFi 只在取数这几十秒里开着。
+    // 注意这会切断 SSH —— 本来有网也一样关，别指望它一直在线。
+    set_wifi(false);
+    log("关闭 WiFi");
     ok
 }
 
