@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use chrono::{Datelike, FixedOffset, NaiveDate, Timelike, Utc};
 use serde::Deserialize;
-use slint::{ModelRc, SharedString, Timer, TimerMode, VecModel};
+use slint::{invoke_from_event_loop, ModelRc, SharedString, Timer, TimerMode, VecModel};
 use lunar_rs::Solar;
 
 slint::include_modules!();
@@ -117,7 +117,90 @@ fn weather_kind(weather: &str) -> &'static str {
     }
 }
 
+// ---------- 按需联网 ----------
+// /proc/net/route 的 Destination 为 00000000 即默认路由，说明当前连着网。
+
+fn has_default_route() -> bool {
+    std::fs::read_to_string("/proc/net/route")
+        .map(|s| {
+            s.lines()
+                .skip(1)
+                .any(|l| l.split_whitespace().nth(1) == Some("00000000"))
+        })
+        .unwrap_or(false)
+}
+
+fn set_wifi(on: bool) {
+    let _ = std::process::Command::new("lipc-set-prop")
+        .args([
+            "com.lab126.cmd",
+            "wirelessEnable",
+            if on { "1" } else { "0" },
+        ])
+        .status();
+}
+
+fn log(msg: &str) {
+    eprintln!("[kwc] {}", msg);
+}
+
+/// 上网取数据：本来没网就开 WiFi、取完再关掉，本来有网就不动它。
+///
+/// 实测飞行模式关闭后要约 30 秒才真正能联网（不只关联，DNS/路由也要就绪），
+/// 所以等到默认路由出现后还要再稳 3 秒，总共最多等 45 秒；等不到就直接跳过，
+/// 保留上一次的天气数据，不拿陈旧连接去撞墙。
+fn with_network<T>(f: impl FnOnce() -> T) -> T {
+    if !has_default_route() {
+        log("无网，打开 WiFi");
+        set_wifi(true);
+        // 实测关飞行模式后约 6 秒能正常联网，放宽到最多等 15 秒
+        let mut ready = false;
+        for _ in 0..30 {
+            if has_default_route() {
+                ready = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        if !ready {
+            log("等网超时（15 秒），本次跳过联网更新");
+            set_wifi(false);
+            return f();
+        }
+        log("网络就绪");
+        std::thread::sleep(std::time::Duration::from_secs(2)); // 路由有了再稳一下
+    }
+    let out = f();
+    set_wifi(false); // 取完就关：省电模式的本意，设备平时离线
+    log("取数完成，关闭 WiFi");
+    out
+}
+
+fn wifi_is_on() -> bool {
+    std::process::Command::new("lipc-get-prop")
+        .args(["com.lab126.cmd", "wirelessEnable"])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "1")
+        .unwrap_or(false)
+}
+
+fn wifi_label() -> String {
+    let on = std::process::Command::new("lipc-get-prop")
+        .args(["com.lab126.cmd", "wirelessEnable"])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    if on == "1" { "WiFi".to_string() } else { "飞行".to_string() }
+}
+
 fn update_weather(app: &AppWindow, agent: &ureq::Agent) {
+    with_network(|| update_weather_inner(app, agent));
+    app.set_wifi(SharedString::from(wifi_label()));
+}
+
+fn update_weather_inner(app: &AppWindow, agent: &ureq::Agent) {
     if let Some(sk) = fetch_realtime(agent) {
         app.set_weather_kind(SharedString::from(weather_kind(&sk.weather)));
         app.set_weather_text(SharedString::from(sk.weather.clone()));
@@ -423,6 +506,27 @@ fn main() {
             // 42 = 主动退出；run-kwc.sh 收到后恢复 Kindle 系统并不再重启。
             // framebuffer 的 vinfo 我们一个字都没改，无需还原。
             std::process::exit(42);
+        });
+
+        // 点「WiFi / 飞行」开关无线。lipc-set-prop 会阻塞几秒，放后台线程，
+        // 完成后回 UI 线程更新文字。
+        app.on_toggle_wifi({
+            let weak = app.as_weak();
+            move || {
+                let weak = weak.clone();
+                std::thread::spawn(move || {
+                    let target = !wifi_is_on();
+                    set_wifi(target);
+                    std::thread::sleep(Duration::from_secs(2));
+                    let label = SharedString::from(wifi_label());
+                    invoke_from_event_loop(move || {
+                        if let Some(app) = weak.upgrade() {
+                            app.set_wifi(label);
+                        }
+                    })
+                    .ok();
+                });
+            }
         });
     }
 

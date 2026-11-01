@@ -41,6 +41,7 @@ export component AppWindow inherits Window {
     // Location & battery
     in property <string> location: "";
     in property <string> battery: "";
+    in property <string> wifi: "";
 
     // Models
     in property <[ForecastDay]> forecast: [];
@@ -51,6 +52,7 @@ export component AppWindow inherits Window {
     callback brightness-up();
     callback brightness-down();
     callback quit();
+    callback toggle-wifi();
 
     HorizontalLayout {
         padding: 24px;
@@ -121,6 +123,19 @@ export component AppWindow inherits Window {
                     spacing: 16px;
                     Text { text: root.location; font-size: 24px; color: #000000; }
                     Text { text: root.battery; font-size: 24px; color: #000000; }
+                    Rectangle {
+                        background: transparent;
+                        padding: 6px;
+                        Text {
+                            text: root.wifi;
+                            font-size: 24px;
+                            color: #000000;
+                            vertical-alignment: center;
+                        }
+                        TouchArea {
+                            clicked => { root.toggle-wifi(); }
+                        }
+                    }
                 }
             }
         }

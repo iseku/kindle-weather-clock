@@ -254,6 +254,19 @@ pub struct CalendarRow { cells: [CalendarDay] }   // 每周一行，补齐到 7 
 
 每个按钮内嵌 `TouchArea`，触发 `brightness-up()` / `brightness-down()` / `quit()` 回调。亮度按 4 步进，钳在 0–24，同时 `app.set_brightness()` 更新显示值。
 
+### 7.2 按需 WiFi（省电模式）
+
+Kindle 的 WiFi 常开是耗电大户。程序改成**只在取数据时开网**：
+
+- `has_default_route()` 读 `/proc/net/route` 看有没有默认路由（比 ping 便宜且不产生流量）
+- `set_wifi(on)` 走 `lipc-set-prop com.lab126.cmd wirelessEnable 0|1`
+- `with_network(f)` 包裹所有联网取数：没网就开、轮询最多 15 秒等到默认路由（实测关飞行模式后约 6 秒可用），就绪后再稳 2 秒；取完**总是关网**
+- 等网超时就跳过这次联网更新，但照样跑一次 `f()`，让电量等本地数据仍能刷新
+
+屏幕上「电量」右边显示当前状态并**可点击切换**：`WiFi` 表示无线开着，`飞行` 表示关了。点击后后台线程调 lipc，2 秒后回 UI 线程更新文字（lipc 会阻塞几秒，不能放 UI 线程）。
+
+**代价**：设备平时离线，SSH 连不上。想远程调试要么等它下次取数的窗口（10 分钟一次，窗口约 15 秒），要么在屏幕上点一下开关开网。
+
 ### 7.1 亮度 0 档必须直写 sysfs
 
 `lipc-set-prop flIntensity 0` 并不是关灯，实测映射：
