@@ -336,6 +336,16 @@ sleep 4
 
 **绝对不要做**：`pkill cvm` 或长时间 `killall -STOP cvm`。upstart 会判定 framework 停止并 KILL cvm，之后屏幕再也刷不出来。
 
+### 8.2.1 退出时为什么要先等 30 秒
+
+程序每 10 分钟开关一次 WiFi，每次都是一条 `lipc-set-prop com.lab126.cmd wirelessEnable` 状态变更。运行时 `cvm`（画状态栏的 framework 进程）被 `STOP` 住了，这些变更事件全积在队列里 —— 跑一整天就是几百条。
+
+点退出后 `killall -CONT cvm` 一恢复，cvm 就开始**集体回放**这些积压事件：状态栏 WiFi 图标一会儿开一会儿关，电量数字一点点往下跳，要缓很久才停。
+
+所以退出流程是：`CONT` → 恢复 WiFi 为开（书库要联网）→ `eips -f -c` 刷白 → **`sleep 30` 让 cvm 把积压事件消化完** → 拉书库 → `eips -f`。用户看到的是「时钟 → 白屏半分钟 → 书库」，比看状态栏抽搐半分钟体面。
+
+治本的做法是运行期间不碰 framework 的 WiFi 状态（改用 `wpa_cli disconnect`），但那样系统里会显示「WiFi 已连接」而实际没网，状态不一致反而更容易让人困惑，所以暂时用等待。
+
 ### 8.3 KUAL 扩展（/mnt/us/extensions/kwc/）
 
 三个文件：`config.xml`、`menu.json`、`bin/kwc.sh`。
