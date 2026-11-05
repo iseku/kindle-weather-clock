@@ -621,10 +621,28 @@ fn main() {
             }
         });
 
-        app.on_quit(|| {
-            // 42 = 主动退出；run-kwc.sh 收到后恢复 Kindle 系统并不再重启。
-            // framebuffer 的 vinfo 我们一个字都没改，无需还原。
-            std::process::exit(42);
+        app.on_quit({
+            let weak = app.as_weak();
+            move || {
+                // 42 = 主动退出；run-kwc.sh 收到后恢复 Kindle 系统并不再重启。
+                // framebuffer 的 vinfo 我们一个字都没改，无需还原。
+                // 退出要等 30 秒让 cvm 消化积压事件，先盖一层提示，
+                // 免得用户对着白屏以为死机了。
+                if let Some(app) = weak.upgrade() {
+                    app.set_quitting(true);
+                }
+                std::thread::spawn(|| {
+                    std::thread::sleep(std::time::Duration::from_millis(600));
+                    let _ = slint::invoke_from_event_loop(|| {
+                        #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
+                        unsafe {
+                            (&*KINDLE_BACKEND).request_full_refresh();
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(600));
+                        std::process::exit(42);
+                    });
+                });
+            }
         });
 
         // 点「WiFi / 飞行」开关无线。lipc-set-prop 会阻塞几秒，放后台线程，

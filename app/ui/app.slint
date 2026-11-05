@@ -22,6 +22,9 @@ export component AppWindow inherits Window {
     title: "Kindle Weather Clock";
     background: #ffffff;
 
+    // 退出中：盖一层全屏提示，免得 30 秒等待期间屏幕一片白像死机
+    in property <bool> quitting: false;
+
     // Clock & calendar
     in property <string> time: "";
     in property <string> date: "";
@@ -284,6 +287,26 @@ export component AppWindow inherits Window {
             background: #000000;
             Text { text: "退"; font-size: 30px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; }
             TouchArea { clicked => { root.quit(); } }
+        }
+    }
+
+    if root.quitting: Rectangle {
+        background: #ffffff;
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: "正在退出…";
+                font-size: 72px;
+                font-weight: 700;
+                color: #000000;
+                horizontal-alignment: center;
+            }
+            Text {
+                text: "正在恢复系统界面，请稍候";
+                font-size: 28px;
+                color: #666666;
+                horizontal-alignment: center;
+            }
         }
     }
 }
