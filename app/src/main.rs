@@ -28,70 +28,6 @@ const FONT_CANDIDATES: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// 把字体的 `hhea` 行高改成 1.0 em（ascent 0.8、descent -0.2、lineGap 0），
-/// 返回可以直接交给 Slint 的字体路径。
-///
-/// 设备自带的字体行高不统一：华文黑体是 1.0 em，华文中圆体是 1.144 em，
-/// 而整页布局按 1.0 em 排的，直接用圆体会把日历斗和底部行挤出屏幕。
-/// 本来就是 1.0 em 的字体原样返回；需要改写的会缓存到 `/mnt/us/.kwc-fonts/`，
-/// 只写一次（圆体约 15 MB，每次启动都复制太浪费）。
-#[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
-fn normalized_font(source: &std::path::Path) -> std::path::PathBuf {
-    /// 从 sfnt 目录里找某张表的偏移
-    fn table(data: &[u8], tag: &[u8; 4]) -> Option<usize> {
-        let count = u16::from_be_bytes([data[4], data[5]]) as usize;
-        (0..count).find_map(|i| {
-            let rec = 12 + i * 16;
-            (&data[rec..rec + 4] == tag).then(|| {
-                u32::from_be_bytes([data[rec + 8], data[rec + 9], data[rec + 10], data[rec + 11]])
-                    as usize
-            })
-        })
-    }
-    fn i16_at(data: &[u8], off: usize) -> i16 {
-        i16::from_be_bytes([data[off], data[off + 1]])
-    }
-
-    let Ok(mut data) = std::fs::read(source) else {
-        return source.to_path_buf();
-    };
-    let (Some(head), Some(hhea)) = (table(&data, b"head"), table(&data, b"hhea")) else {
-        return source.to_path_buf();
-    };
-    let upem = i16_at(&data, head + 18);
-    if upem <= 0 {
-        return source.to_path_buf();
-    }
-    let (ascent, descent, gap) = (
-        i32::from(i16_at(&data, hhea + 4)),
-        i32::from(i16_at(&data, hhea + 6)),
-        i32::from(i16_at(&data, hhea + 8)),
-    );
-    // 已经是 1.0 em（容差 1%）就不用动
-    if (ascent - descent + gap - i32::from(upem)).abs() * 100 < i32::from(upem) {
-        return source.to_path_buf();
-    }
-
-    let name = source.file_name().unwrap_or_default();
-    let cache = std::path::Path::new("/mnt/us/.kwc-fonts").join(format!("v4-{}", name.to_string_lossy()));
-    if cache.exists() {
-        return cache;
-    }
-
-    // 直接把 unitsPerEm 放大到「行高总和」，字形会按同一比例缩小，
-    // 行高比例恰好变成 1.0 em —— 不用改 hhea / OS/2，避免动到字形的度量基准。
-    let total = (ascent - descent + gap) as u16;
-    data[head + 18..head + 20].copy_from_slice(&total.to_be_bytes());
-    if std::fs::create_dir_all("/mnt/us/.kwc-fonts").is_err()
-        || std::fs::write(&cache, &data).is_err()
-    {
-        log("字体缓存写入失败，改用原字体");
-        return source.to_path_buf();
-    }
-    log(&format!("字体行高已归一化：{}", cache.display()));
-    cache
-}
-
 #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
 static mut KINDLE_BACKEND: *const slint_backend_kindle::KindleBackend = std::ptr::null();
 
@@ -538,20 +474,25 @@ fn fetch_location(agent: &ureq::Agent) -> String {
     }
     if let Ok(resp) = agent.get("http://cip.cc/").call() {
         if let Ok(text) = resp.into_string() {
-            for line in text.lines() {
-                if line.contains("城市") {
-                    if let Some(pos) = line.find(':').or(line.find('：')) {
-                        let city = line[pos + 1..].trim().to_string();
-                        if !city.is_empty() {
-                            let _ = CACHE.set(city.clone());
-                            return city;
-                        }
-                    }
-                }
+            if let Some(city) = parse_city(&text) {
+                let _ = CACHE.set(city.clone());
+                return city;
             }
         }
     }
     "北京".to_string()
+}
+
+/// 从 cip.cc 的纯文本里取城市名。
+///
+/// 返回形如 `地址	: 中国 山东 济南` / `数据三	: 中国 山东省 济南市 | 联通`，
+/// 取最后一级地名并去掉「市」字；中间出现「中国」这类项直接跳过。
+fn parse_city(text: &str) -> Option<String> {
+    let line = text.lines().find(|l| l.starts_with("地址"))?;
+    let value = line.split([':', '：']).nth(1)?;
+    let city = value.split_whitespace().rev().find(|t| *t != "中国")?;
+    let city = city.split('|').next()?.trim().trim_end_matches('市');
+    (!city.is_empty()).then(|| city.to_string())
 }
 
 // ---------- 电量 ----------
