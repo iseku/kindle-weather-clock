@@ -120,15 +120,32 @@ fn fetch_forecast(agent: &ureq::Agent) -> Vec<ItboyDay> {
 fn weather_kind(weather: &str) -> &'static str {
     if weather.contains("雷") {
         "cloud-lightning"
-    } else if weather.contains("雨") || weather.contains("雪") {
-        "cloud-rain"
+    } else if weather.contains("冰雹") {
+        "cloud-hail"
+    } else if weather.contains("雪") {
+        // 含「雨夹雪」「阵雪」「小到中雪」等
+        "snowflake"
+    } else if weather.contains("雨") {
+        if weather.contains("风") {
+            "cloud-rain-wind"
+        } else {
+            "cloud-rain"
+        }
     } else if weather.contains("雾") || weather.contains("霾") {
         "cloud-fog"
-    } else if weather.contains("多云") {
+    } else if weather.contains("沙") || weather.contains("尘") {
+        // 浮尘 / 扬沙 / 沙尘暴
+        "haze"
+    } else if weather.contains("风") {
+        // 大风 / 风
+        "wind"
+    } else if weather.contains("云") {
+        // 多云 / 少云 / 晴间多云
         "cloud-sun"
     } else if weather.contains("晴") {
         "sun"
     } else {
+        // 阴 / 未知
         "cloud"
     }
 }

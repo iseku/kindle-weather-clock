@@ -98,9 +98,8 @@ KINDLETOOL=/path/to/kindletool tools/build-mrpi.sh
 ## 仓库结构
 
 ```
-app/                          Slint 应用（main.rs + ui/app.slint）
+app/                          Slint 应用（main.rs + ui/app.slint + ui/icons 天气图标）
 crates/slint-backend-kindle/  Kindle 平台后端：framebuffer / 触摸 / 唤醒
-assets/                       UI 图标等静态资源（字体用设备自带的，不打包）
 tools/
   run-kwc.sh                  设备上的守护循环（崩溃自动重启、退出恢复 UI）
   build-mrpi.sh               本地打包 MRPI 安装包

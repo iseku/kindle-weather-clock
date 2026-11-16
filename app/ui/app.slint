@@ -187,6 +187,9 @@ export component AppWindow inherits Window {
                         if root.weather-kind == "cloud-lightning": Image { width: 106px; height: 106px; source: @image-url("icons/cloud-lightning.svg"); image-fit: contain; }
                         if root.weather-kind == "snowflake": Image { width: 106px; height: 106px; source: @image-url("icons/snowflake.svg"); image-fit: contain; }
                         if root.weather-kind == "cloud-fog": Image { width: 106px; height: 106px; source: @image-url("icons/cloud-fog.svg"); image-fit: contain; }
+                        if root.weather-kind == "cloud-hail": Image { width: 106px; height: 106px; source: @image-url("icons/cloud-hail.svg"); image-fit: contain; }
+                        if root.weather-kind == "haze": Image { width: 106px; height: 106px; source: @image-url("icons/haze.svg"); image-fit: contain; }
+                        if root.weather-kind == "wind": Image { width: 106px; height: 106px; source: @image-url("icons/wind.svg"); image-fit: contain; }
                     }
                     VerticalLayout {
                         spacing: 4px;
