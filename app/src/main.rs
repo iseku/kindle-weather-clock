@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use chrono::{Datelike, FixedOffset, NaiveDate, Timelike, Utc};
 use serde::Deserialize;
-use slint::{invoke_from_event_loop, ModelRc, SharedString, Timer, TimerMode, VecModel};
+use slint::{ModelRc, SharedString, Timer, TimerMode, VecModel};
 use lunar_rs::Solar;
 
 slint::include_modules!();
@@ -659,6 +659,11 @@ fn main() {
     // 初始刷新
     let weather_busy = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     update_clock(&app, &now_east8(), true);
+    // 首帧走一次 GC16 全刷：屏幕上原本是书库首页，只用局部刷新会留下淡淡的残影。
+    #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
+    unsafe {
+        (&*KINDLE_BACKEND).request_full_refresh();
+    }
     spawn_weather_update(app.as_weak(), agent.clone(), weather_busy.clone());
 
     // 亮度控制 + 退出
@@ -711,21 +716,35 @@ fn main() {
 
         // 点「WiFi / 飞行」开关无线。lipc-set-prop 会阻塞几秒，放后台线程，
         // 完成后回 UI 线程更新文字。
+        // 一次切换要跑好几秒（wifi_is_on 5s + set_wifi 8s 超时），期间用户看不到任何
+        // 变化就会连点，几次点击各起一个线程互相覆盖状态。所以：按下立刻改文字给出反馈，
+        // 并加单飞标志，切换没结束前忽略后续点击。
         app.on_toggle_wifi({
             let weak = app.as_weak();
+            let toggling = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             move || {
+                use std::sync::atomic::Ordering;
+                if toggling.swap(true, Ordering::SeqCst) {
+                    return;
+                }
                 let weak = weak.clone();
+                let toggling = toggling.clone();
+                let pending = SharedString::from("切换…");
+                if let Some(app) = weak.upgrade() {
+                    app.set_wifi(pending);
+                }
                 std::thread::spawn(move || {
                     let target = !wifi_is_on();
                     set_wifi(target);
-                    std::thread::sleep(Duration::from_secs(2));
+                    std::thread::sleep(Duration::from_secs(1));
                     let label = SharedString::from(wifi_label());
-                    invoke_from_event_loop(move || {
-                        if let Some(app) = weak.upgrade() {
+                    let weak_ui = weak.clone();
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(app) = weak_ui.upgrade() {
                             app.set_wifi(label);
                         }
-                    })
-                    .ok();
+                    });
+                    toggling.store(false, Ordering::SeqCst);
                 });
             }
         });
