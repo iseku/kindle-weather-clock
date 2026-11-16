@@ -31,11 +31,7 @@
 
 越狱以及安装 KUAL / MRPI 的具体步骤见 → [Kindle 越狱教程（书伴）](https://bookfere.com/post/1075.html)
 
-装完可以这样确认环境就绪：
-
-```bash
-ls /mnt/us/extensions/          # 能看到 MRInstaller 目录
-```
+装完可以这样确认环境就绪：用 USB 线把 Kindle 连到电脑，打开 Kindle 磁盘里的 `extensions` 文件夹（即设备上的 `/mnt/us/extensions/`），能看到 `MRInstaller` 目录即可。
 
 同时 KUAL 菜单里应出现 **Install MR Packages** 这一项。
 
