@@ -117,3 +117,4 @@ docs/DESIGN.md                完整设计文档
 ## 参考
 
 - [ferrink-home-assistant](https://github.com/justinledwards/ferrink-home-assistant) —— 同样跑在 Kindle Paperwhite 上的常驻界面项目，本项目在设备侧进程管理（停 cvm/awesome、退出后恢复书库）上参考了它的做法。
+- [寒蝉圆体 ChillRound](https://github.com/Warren2060/ChillRound) —— 界面字体来源，SIL Open Font License 1.1。
