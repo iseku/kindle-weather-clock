@@ -26,7 +26,7 @@
 
 需要设备已越狱并装有 KUAL + MRPI。
 
-1. 从 [Releases](../../releases) 下载 `update-kwc.bin`（或按下方「打包」自行生成）
+1. 下载 [update-kwc.bin](https://github.com/iseku/kindle-weather-clock/raw/main/update-kwc.bin)（约 6 MB，已打好包，无需编译环境；也可按下方「打包」自行生成）
 2. 拷贝到 Kindle 的 `/mnt/us/mrpackages/`
 3. 打开 KUAL → **Install MR Packages**
 4. 安装完成后，KUAL 菜单里会出现 **Weather Clock → Start Weather Clock**
@@ -67,7 +67,7 @@ export RUSTUP_HOME=$PWD/../.toolchain/rustup
 cargo zigbuild --release --target armv7-unknown-linux-musleabihf
 ```
 
-产物：`target/armv7-unknown-linux-musleabihf/release/kindle-weather-clock`（约 19 MB）。
+产物：`target/armv7-unknown-linux-musleabihf/release/kindle-weather-clock`（约 9.8 MB，字体子集已内置）。
 
 ## 打包 MRPI 安装包
 
