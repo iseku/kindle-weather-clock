@@ -9,10 +9,88 @@ use lunar_rs::Solar;
 
 slint::include_modules!();
 
+/// 界面字体直接用设备自带的，不打包字库。
+///
+/// 中文固件带「华文中圆体」（STZhongyuan，圆体），其他机型退回「华文黑体」。
+/// 每项是（常规, 粗体）：粗体那支交给 Slint 的字体链，`font-weight: 700` 时选中它，
+/// 目前只有日历格子里的农历小字用得到。
 #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
-static ROUND_FONT: &[u8] = include_bytes!("../../assets/KWCRound.ttf");
+const FONT_CANDIDATES: &[(&str, &str, &str)] = &[
+    (
+        "/var/local/font/mnt/zh-Hans_font/fonts/STYuanMedium.ttf",
+        "/var/local/font/mnt/zh-Hans_font/fonts/STYuanBold.ttf",
+        "STYuan",
+    ),
+    (
+        "/usr/java/lib/fonts/STHeitiMedium.ttf",
+        "/usr/java/lib/fonts/STHeitiBold.ttf",
+        "STHeiti",
+    ),
+];
+
+/// 把字体的 `hhea` 行高改成 1.0 em（ascent 0.8、descent -0.2、lineGap 0），
+/// 返回可以直接交给 Slint 的字体路径。
+///
+/// 设备自带的字体行高不统一：华文黑体是 1.0 em，华文中圆体是 1.144 em，
+/// 而整页布局按 1.0 em 排的，直接用圆体会把日历斗和底部行挤出屏幕。
+/// 本来就是 1.0 em 的字体原样返回；需要改写的会缓存到 `/mnt/us/.kwc-fonts/`，
+/// 只写一次（圆体约 15 MB，每次启动都复制太浪费）。
 #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
-static ROUND_FONT_BOLD: &[u8] = include_bytes!("../../assets/KWCRound-Bold.ttf");
+fn normalized_font(source: &std::path::Path) -> std::path::PathBuf {
+    /// 从 sfnt 目录里找某张表的偏移
+    fn table(data: &[u8], tag: &[u8; 4]) -> Option<usize> {
+        let count = u16::from_be_bytes([data[4], data[5]]) as usize;
+        (0..count).find_map(|i| {
+            let rec = 12 + i * 16;
+            (&data[rec..rec + 4] == tag).then(|| {
+                u32::from_be_bytes([data[rec + 8], data[rec + 9], data[rec + 10], data[rec + 11]])
+                    as usize
+            })
+        })
+    }
+    fn i16_at(data: &[u8], off: usize) -> i16 {
+        i16::from_be_bytes([data[off], data[off + 1]])
+    }
+
+    let Ok(mut data) = std::fs::read(source) else {
+        return source.to_path_buf();
+    };
+    let (Some(head), Some(hhea)) = (table(&data, b"head"), table(&data, b"hhea")) else {
+        return source.to_path_buf();
+    };
+    let upem = i16_at(&data, head + 18);
+    if upem <= 0 {
+        return source.to_path_buf();
+    }
+    let (ascent, descent, gap) = (
+        i32::from(i16_at(&data, hhea + 4)),
+        i32::from(i16_at(&data, hhea + 6)),
+        i32::from(i16_at(&data, hhea + 8)),
+    );
+    // 已经是 1.0 em（容差 1%）就不用动
+    if (ascent - descent + gap - i32::from(upem)).abs() * 100 < i32::from(upem) {
+        return source.to_path_buf();
+    }
+
+    let name = source.file_name().unwrap_or_default();
+    let cache = std::path::Path::new("/mnt/us/.kwc-fonts").join(format!("v4-{}", name.to_string_lossy()));
+    if cache.exists() {
+        return cache;
+    }
+
+    // 直接把 unitsPerEm 放大到「行高总和」，字形会按同一比例缩小，
+    // 行高比例恰好变成 1.0 em —— 不用改 hhea / OS/2，避免动到字形的度量基准。
+    let total = (ascent - descent + gap) as u16;
+    data[head + 18..head + 20].copy_from_slice(&total.to_be_bytes());
+    if std::fs::create_dir_all("/mnt/us/.kwc-fonts").is_err()
+        || std::fs::write(&cache, &data).is_err()
+    {
+        log("字体缓存写入失败，改用原字体");
+        return source.to_path_buf();
+    }
+    log(&format!("字体行高已归一化：{}", cache.display()));
+    cache
+}
 
 #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
 static mut KINDLE_BACKEND: *const slint_backend_kindle::KindleBackend = std::ptr::null();
@@ -537,20 +615,33 @@ fn main() {
 
     // Kindle 后端：必须先 install 设置全局 platform，再创建组件
     #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
+    let mut app_label_font = String::new();
+    #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
     let backend = {
-        let b = slint_backend_kindle::install(ROUND_FONT)
+        let (regular, bold, bold_family) = FONT_CANDIDATES
+            .iter()
+            .copied()
+            .find(|(regular, _, _)| std::path::Path::new(regular).exists())
+            .expect("kindle has no usable CJK system font");
+        // 粗体那支放进字体链：font-weight: 700 时按字重选中（日历小字靠它，16px 下细笔画
+        // 在黑白二值渲染里会直接消失，粗一点才看得见）
+        if std::path::Path::new(bold).exists() {
+            // SAFETY: 启动早期设置，此时 Slint 还没读这个变量
+            unsafe {
+                std::env::set_var("SLINT_FONT_PATH", bold);
+            }
+        }
+        let b = slint_backend_kindle::install_with_font_path(std::path::Path::new(regular))
             .expect("failed to install Kindle backend");
+        app_label_font = bold_family.to_string();
         b.set_black_and_white(true);
         Arc::new(b)
     };
 
     let app = AppWindow::new().expect("failed to create AppWindow");
-
-    // 日历格子里的农历小字用加粗圆体（同一字体文件只有常规字重，粗体是轮廓膨胀生成的）
     #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
-    backend
-        .register_font_from_memory(ROUND_FONT_BOLD)
-        .expect("failed to register bold font");
+    app.set_label_font(app_label_font.as_str().into());
+
     // ponytail: 必须带超时。合盖休眠唤醒后 WiFi 未就绪时，无超时的 socket 读会永久阻塞
     // 在 sk_wait_data，主线程冻结 → 时钟定时器一起停，屏幕从此再不刷新。
     let agent = ureq::AgentBuilder::new()

@@ -82,7 +82,7 @@ export RUSTUP_HOME=$PWD/../.toolchain/rustup
 cargo zigbuild --release --target armv7-unknown-linux-musleabihf
 ```
 
-产物：`target/armv7-unknown-linux-musleabihf/release/kindle-weather-clock`（约 9.8 MB，字体子集已内置）。
+产物：`target/armv7-unknown-linux-musleabihf/release/kindle-weather-clock`（约 9 MB）。
 
 ## 打包 MRPI 安装包
 
@@ -100,7 +100,7 @@ KINDLETOOL=/path/to/kindletool tools/build-mrpi.sh
 ```
 app/                          Slint 应用（main.rs + ui/app.slint）
 crates/slint-backend-kindle/  Kindle 平台后端：framebuffer / 触摸 / 唤醒
-assets/                       界面字体（寒蝉圆体子集 + 合成的粗体）与图标
+assets/                       UI 图标等静态资源（字体用设备自带的，不打包）
 tools/
   run-kwc.sh                  设备上的守护循环（崩溃自动重启、退出恢复 UI）
   build-mrpi.sh               本地打包 MRPI 安装包
@@ -120,16 +120,15 @@ docs/DESIGN.md                完整设计文档
 
 代码采用 MIT OR Apache-2.0。
 
-界面字体基于 [寒蝉圆体 ChillRound](https://github.com/Warren2060/ChillRound)，SIL Open Font License 1.1（见 [assets/OFL.txt](assets/OFL.txt)）：
+界面字体**不在仓库里**，直接用设备自带的字体，因此没有字体分发与授权问题：
 
-- `assets/KWCRound.ttf` —— 子集（约 1700 字，1 MB），默认字体
-- `assets/KWCRound-Bold.ttf` —— 由该子集**轮廓膨胀合成**的粗体（字体本身只有 Regular 字重），仅用于日历格子里的农历小字
+- 首选 `/var/local/font/mnt/zh-Hans_font/fonts/STYuanMedium.ttf`（华文中圆体，中文固件的「圆体」）；
+- 没有就回退 `/usr/java/lib/fonts/STHeitiMedium.ttf`（华文黑体，所有机型都有）。
 
-原字体带保留字体名 `ChillRoundF` / `ChillRoundM`，按 OFL 要求，修改后的版本已改名为 `KWC Round` / `KWC Round Bold`。修改界面文案后需要重新子集化，用字集合见 `assets/font-chars.txt` 加上源码中的中文字面量。
+粗体那支（`STYuanBold.ttf` / `STHeitiBold.ttf`）通过 `SLINT_FONT_PATH` 进字体链，`font-weight: 700` 时按字重选中，只用于日历格子里的农历小字。
 
 框架层 `crates/slint-backend-kindle` 源自 [slint-kindle-backend](https://github.com/sverrejb/slint-kindle-backend)。
 
 ## 参考
 
 - [ferrink-home-assistant](https://github.com/justinledwards/ferrink-home-assistant) —— 同样跑在 Kindle Paperwhite 上的常驻界面项目，本项目在设备侧进程管理（停 cvm/awesome、退出后恢复书库）上参考了它的做法。
-- [寒蝉圆体 ChillRound](https://github.com/Warren2060/ChillRound) —— 界面字体来源，SIL Open Font License 1.1。

@@ -242,9 +242,25 @@ pub fn install(font_data: &[u8]) -> Result<KindleBackend, slint::PlatformError> 
     std::fs::write(&path, font_data)
         .map_err(|e| slint::PlatformError::Other(format!("failed to stage default font: {e}")))?;
 
+    install_with_font_path(&path)
+}
+
+/// Same as [`install`], but use a font file already on disk as the default,
+/// without staging a copy in the temp directory.
+///
+/// Useful when the device ships a usable font (e.g. the Kindle's own
+/// `STYuanMedium.ttf`): pointing Slint at it directly keeps the binary small
+/// and avoids copying a multi-megabyte file on every start.
+///
+/// # Errors
+///
+/// Fails if Slint's platform is already set up.
+pub fn install_with_font_path(
+    font_path: &std::path::Path,
+) -> Result<KindleBackend, slint::PlatformError> {
     // SAFETY: install() runs once at startup before any threads exist, so nothing else can read this env var at the same time.
     unsafe {
-        std::env::set_var("SLINT_DEFAULT_FONT", &path);
+        std::env::set_var("SLINT_DEFAULT_FONT", font_path);
     }
 
     let wake_schedule = Arc::new(Mutex::new(None));
