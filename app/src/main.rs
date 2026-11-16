@@ -10,7 +10,7 @@ use lunar_rs::Solar;
 slint::include_modules!();
 
 #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
-static STHEITI_BOLD: &[u8] = include_bytes!("../../assets/STHeitiBold.ttf");
+static NOTO_SANS_SC_BOLD: &[u8] = include_bytes!("../../assets/NotoSansSC-Bold-subset.otf");
 
 #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
 static mut KINDLE_BACKEND: *const slint_backend_kindle::KindleBackend = std::ptr::null();
@@ -536,7 +536,7 @@ fn main() {
     // Kindle 后端：必须先 install 设置全局 platform，再创建组件
     #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
     let backend = {
-        let b = slint_backend_kindle::install(STHEITI_BOLD)
+        let b = slint_backend_kindle::install(NOTO_SANS_SC_BOLD)
             .expect("failed to install Kindle backend");
         b.set_black_and_white(true);
         Arc::new(b)
