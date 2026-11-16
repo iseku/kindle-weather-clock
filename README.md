@@ -20,11 +20,30 @@
 - 自研 [`slint-backend-kindle`](crates/slint-backend-kindle) 后端：framebuffer 写入、内部旋转、触摸转置、退出时唤醒系统框架
 - 交叉编译到 `armv7-unknown-linux-musleabihf`（静态链接，不依赖 Kindle 上的 glibc）
 
+## 环境准备
+
+装之前，Kindle 需要先**越狱**，并装好两样东西：
+
+- **KUAL** —— Kindle 上的第三方启动器，本项目装好后从这里启动
+- **MRPI**（MobileRead Package Installer）—— KUAL 的扩展，用来安装本项目的 `update-kwc.bin` 安装包
+
+设备要求：Kindle Paperwhite 2（本项目在其 758×1024 屏幕上开发和验证，同代机型理论可用，布局可能需要微调）。
+
+越狱以及安装 KUAL / MRPI 的具体步骤见 → [Kindle 越狱教程（书伴）](https://bookfere.com/post/1075.html)
+
+装完可以这样确认环境就绪：
+
+```bash
+ls /mnt/us/extensions/          # 能看到 MRInstaller 目录
+```
+
+同时 KUAL 菜单里应出现 **Install MR Packages** 这一项。
+
 ## 安装
 
 ### 方式一：MRPI 安装包（推荐）
 
-需要设备已越狱并装有 KUAL + MRPI。
+需要先完成上一步的[环境准备](#环境准备)。
 
 1. 下载 [update-kwc.bin](https://github.com/iseku/kindle-weather-clock/raw/main/update-kwc.bin)（约 6 MB，已打好包，无需编译环境；也可按下方「打包」自行生成）
 2. 拷贝到 Kindle 的 `/mnt/us/mrpackages/`
