@@ -104,3 +104,7 @@ docs/DESIGN.md                完整设计文档
 ## 许可证
 
 MIT OR Apache-2.0。框架层 `crates/slint-backend-kindle` 源自 [slint-kindle-backend](https://github.com/sverrejb/slint-kindle-backend)。
+
+## 参考
+
+- [ferrink-home-assistant](https://github.com/justinledwards/ferrink-home-assistant) —— 同样跑在 Kindle Paperwhite 上的常驻界面项目，本项目在设备侧进程管理（停 cvm/awesome、退出后恢复书库）上参考了它的做法。
