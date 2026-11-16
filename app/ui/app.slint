@@ -89,22 +89,22 @@ export component AppWindow inherits Window {
                     spacing: 3px;
                     vertical-stretch: 0;
                     alignment: start;
-                    Rectangle { width: 76px; height: 34px; background: #000000; Text { text: "日"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
-                    Rectangle { width: 76px; height: 34px; background: #000000; Text { text: "一"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
-                    Rectangle { width: 76px; height: 34px; background: #000000; Text { text: "二"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
-                    Rectangle { width: 76px; height: 34px; background: #000000; Text { text: "三"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
-                    Rectangle { width: 76px; height: 34px; background: #000000; Text { text: "四"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
-                    Rectangle { width: 76px; height: 34px; background: #000000; Text { text: "五"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
-                    Rectangle { width: 76px; height: 34px; background: #000000; Text { text: "六"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
+                    Rectangle { width: 76px; height: 30px; background: #000000; Text { text: "日"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
+                    Rectangle { width: 76px; height: 30px; background: #000000; Text { text: "一"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
+                    Rectangle { width: 76px; height: 30px; background: #000000; Text { text: "二"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
+                    Rectangle { width: 76px; height: 30px; background: #000000; Text { text: "三"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
+                    Rectangle { width: 76px; height: 30px; background: #000000; Text { text: "四"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
+                    Rectangle { width: 76px; height: 30px; background: #000000; Text { text: "五"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
+                    Rectangle { width: 76px; height: 30px; background: #000000; Text { text: "六"; font-size: 27px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; } }
                 }
 
                 for row in root.calendar : HorizontalLayout {
-                    spacing: 3px;
+                    spacing: 2px;
                     vertical-stretch: 0;
                     alignment: start;
                     for cell in row.cells : Rectangle {
                         width: 76px;
-                        height: 70px;
+                        height: 62px;
                         border-width: cell.is_today ? 2px : 0px;
                         border-color: #000000;
                         VerticalLayout {
@@ -125,22 +125,22 @@ export component AppWindow inherits Window {
             // 不固定的话，宜忌行数一变它就整体上下浮动——行数多的时候会沉到屏幕
             // 最下沿的触摸死区里，按钮就点不中了。
             Rectangle {
-                height: 212px;
+                height: 196px;
                 background: transparent;
                 // 极端长的宜忌宁可裁掉尾部，也不许把状态栏顶到屏幕外的触摸死区
                 clip: true;
                 VerticalLayout {
-                spacing: 12px;
+                spacing: 6px;
                 HorizontalLayout {
                     spacing: 6px;
                     Text { text: "宜"; font-size: 32px; color: #000000; }
                     // 最多两行，超出用 … 省略（overflow: elide 会按可用高度自动算行数）
-                    Text { text: root.yi; font-size: 26px; color: #000000; wrap: word-wrap; horizontal-stretch: 1; height: 62px; overflow: elide; vertical-alignment: top; }
+                    Text { text: root.yi; font-size: 26px; color: #000000; wrap: word-wrap; horizontal-stretch: 1; height: 64px; overflow: elide; vertical-alignment: top; }
                 }
                 HorizontalLayout {
                     spacing: 6px;
                     Text { text: "忌"; font-size: 32px; color: #000000; }
-                    Text { text: root.ji; font-size: 26px; color: #000000; wrap: word-wrap; horizontal-stretch: 1; height: 62px; overflow: elide; vertical-alignment: top; }
+                    Text { text: root.ji; font-size: 26px; color: #000000; wrap: word-wrap; horizontal-stretch: 1; height: 64px; overflow: elide; vertical-alignment: top; }
                 }
                 // 吃掉剩余高度，把状态栏顶到黄历区底部
                 Rectangle { vertical-stretch: 1; }
@@ -148,13 +148,13 @@ export component AppWindow inherits Window {
                     spacing: 16px;
                     // 三个元素统一 46px 高并垂直居中，否则 WiFi 那块（触摸热区撑高）
                     // 会跟左边的城市/电量错位
-                    Text { text: root.location; font-size: 24px; color: #000000; height: 46px; vertical-alignment: center; }
-                    Text { text: root.battery; font-size: 24px; color: #000000; height: 46px; vertical-alignment: center; }
+                    Text { text: root.location; font-size: 24px; color: #000000; height: 44px; vertical-alignment: center; }
+                    Text { text: root.battery; font-size: 24px; color: #000000; height: 44px; vertical-alignment: center; }
                     // 触摸热区要够大：原来只有文字本身（约 60x30），手指很难点中
                     Rectangle {
                         background: transparent;
                         width: 150px;
-                        height: 46px;
+                        height: 44px;
                         Text {
                             text: root.wifi;
                             font-size: 24px;
