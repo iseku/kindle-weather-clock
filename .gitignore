@@ -20,3 +20,7 @@ Thumbs.db
 # Log files pulled from the device for analysis
 /*.log
 *.env
+
+# 编译/打包产物（本地生成，不进仓库）
+/build/
+/update-kwc.bin

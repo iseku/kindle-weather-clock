@@ -256,18 +256,18 @@ pub struct CalendarRow { cells: [CalendarDay] }   // 每周一行，补齐到 7 
 
 每个按钮内嵌 `TouchArea`，触发 `brightness-up()` / `brightness-down()` / `quit()` 回调。亮度按 4 步进，钳在 0–24，同时 `app.set_brightness()` 更新显示值。
 
-### 7.2 按需 WiFi（省电模式）
+### 7.2 按需 WiFi（手动开关）
 
-Kindle 的 WiFi 常开是耗电大户。程序改成**只在取数据时开网**：
+Kindle 的 WiFi 常开是耗电大户，但取数又需要联网。折中：**取数时按需开网，取完按系统原状恢复**，WiFi 开关完全交给用户手动控制：
 
 - `has_default_route()` 读 `/proc/net/route` 看有没有默认路由（比 ping 便宜且不产生流量）
 - `set_wifi(on)` 走 `lipc-set-prop com.lab126.cmd wirelessEnable 0|1`
-- `with_network(f)` 包裹所有联网取数：没网就开、轮询最多 15 秒等到默认路由（实测关飞行模式后约 6 秒可用），就绪后再稳 2 秒；取完**总是关网**
+- `with_network(f)` 包裹所有联网取数：进来先 `wifi_is_on()` 记住系统 WiFi 原状；没网就开 WiFi、轮询最多 15 秒等到默认路由（实测关飞行模式后约 6 秒可用），就绪后再稳 5 秒；取完**按原状恢复**——原来关的关回去，原来开的保持开
 - 等网超时就跳过这次联网更新，但照样跑一次 `f()`，让电量等本地数据仍能刷新
 
 屏幕上「电量」右边显示当前状态并**可点击切换**：`WiFi` 表示无线开着，`飞行` 表示关了。点击后后台线程调 lipc，2 秒后回 UI 线程更新文字（lipc 会阻塞几秒，不能放 UI 线程）。
 
-**代价**：设备平时离线，SSH 连不上。想远程调试要么等它下次取数的窗口（10 分钟一次，窗口约 15 秒），要么在屏幕上点一下开关开网。
+**效果**：启动时不再自动关 WiFi，系统 WiFi 状态被保留。想省电就手动关（飞行模式），想远程调试就手动开——SSH 全程可用，不再依赖取数窗口。
 
 ### 7.1 亮度 0 档必须直写 sysfs
 
@@ -338,7 +338,7 @@ sleep 4
 
 ### 8.2.1 退出时为什么要先等 30 秒
 
-程序每 10 分钟开关一次 WiFi，每次都是一条 `lipc-set-prop com.lab126.cmd wirelessEnable` 状态变更。运行时 `cvm`（画状态栏的 framework 进程）被 `STOP` 住了，这些变更事件全积在队列里 —— 跑一整天就是几百条。
+程序取数时按需开关 WiFi（系统 WiFi 关着才会动它，开着则不动），每次都是一条 `lipc-set-prop com.lab126.cmd wirelessEnable` 状态变更。运行时 `cvm`（画状态栏的 framework 进程）被 `STOP` 住了，这些变更事件全积在队列里 —— 跑一整天就是几百条。
 
 点退出后 `killall -CONT cvm` 一恢复，cvm 就开始**集体回放**这些积压事件：状态栏 WiFi 图标一会儿开一会儿关，电量数字一点点往下跳，要缓很久才停。
 
@@ -442,6 +442,28 @@ Image.frombytes('L',(768,1024),d[:768*1024]).save('/tmp/fb.png')"
 ```
 
 用工作区自带的 python（含 Pillow）：`/Users/tony/.dsh/dsh-runtimes/dsh-next-primary-runtime/dependencies/python/bin/python3`。系统 python3 没有 PIL。
+
+### 9.4 打包 MRPI 安装包
+
+```bash
+KINDLETOOL=/path/to/kindletool tools/build-mrpi.sh
+```
+
+产物 `update-kwc.bin` 放进 `/mnt/us/mrpackages/`，KUAL → Install MR Packages 即可安装。
+
+**MRPI 的两条硬规则**（都踩过）：
+
+1. **输出文件名必须以 `update` 开头**，否则 kindletool 报
+   `needs to follow the proper naming scheme (update*.bin)`。
+2. **MRPI 会执行 workdir 里所有顶层 `*.sh`**。包里只能有 `install.sh` 一个顶层脚本，守护脚本必须放
+   `payload/` 子目录 —— 否则 `run-kwc.sh` 会被当成第二个安装脚本执行，它开头的
+   `killall -STOP awesome/cvm` 会直接把 UI 冻住，MRPI 超时后屏幕停在 "Done, restarting UI..."。
+
+另外两条经验：
+
+- MRPI 安装前要求 `/mnt/us` 剩余空间 **≥ 150 MB**，不足会打印 `Not enough free space left, skipping` 直接跳过。
+- 这台设备的 KUAL 扩展扫描根是 **`/mnt/us/extensions/`**（不是 `/extensions/`），安装脚本已按此处理；
+  装完要删 `/var/tmp/KUAL.cache`，否则新菜单要等重启才出现。
 
 ---
 

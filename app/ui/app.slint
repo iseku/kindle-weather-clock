@@ -120,8 +120,16 @@ export component AppWindow inherits Window {
             // 黄历区
             VerticalLayout {
                 spacing: 12px;
-                Text { text: root.yi; font-size: 26px; color: #000000; wrap: word-wrap; }
-                Text { text: root.ji; font-size: 26px; color: #000000; wrap: word-wrap; }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "宜"; font-size: 32px; color: #000000; }
+                    Text { text: root.yi; font-size: 26px; color: #000000; wrap: word-wrap; horizontal-stretch: 1; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "忌"; font-size: 32px; color: #000000; }
+                    Text { text: root.ji; font-size: 26px; color: #000000; wrap: word-wrap; horizontal-stretch: 1; }
+                }
                 HorizontalLayout {
                     spacing: 16px;
                     Text { text: root.location; font-size: 24px; color: #000000; }

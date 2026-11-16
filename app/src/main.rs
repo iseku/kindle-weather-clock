@@ -176,12 +176,15 @@ fn log(msg: &str) {
     eprintln!("[{}] {}", now_east8().format("%m-%d %H:%M:%S"), msg);
 }
 
-/// 上网取数据：本来没网就开 WiFi、取完再关掉，本来有网就不动它。
+/// 上网取数据：本来没网就开 WiFi 取数，取完按系统原状恢复；
+/// 本来有网就不动它，取完也不关 —— WiFi 开关完全交给用户手动控制。
 ///
 /// 实测飞行模式关闭后要约 30 秒才真正能联网（不只关联，DNS/路由也要就绪），
 /// 所以等到默认路由出现后还要再稳 3 秒，总共最多等 45 秒；等不到就直接跳过，
 /// 保留上一次的天气数据，不拿陈旧连接去撞墙。
 fn with_network(mut f: impl FnMut() -> bool) -> bool {
+    // 记住取数前系统 WiFi 是开是关：取完按原样恢复，不主动改用户状态。
+    let was_on = wifi_is_on();
     if !has_default_route() {
         log("无网，打开 WiFi");
         set_wifi(true);
@@ -196,7 +199,7 @@ fn with_network(mut f: impl FnMut() -> bool) -> bool {
         }
         if !ready {
             log("等网超时（15 秒），本次跳过联网更新");
-            set_wifi(false);
+            set_wifi(was_on); // 等网失败，恢复原状
             return f();
         }
         log("网络就绪");
@@ -210,10 +213,14 @@ fn with_network(mut f: impl FnMut() -> bool) -> bool {
         std::thread::sleep(std::time::Duration::from_secs(3));
         ok = f();
     }
-    // 取完总是关：设备平时就该离线，WiFi 只在取数这几十秒里开着。
-    // 注意这会切断 SSH —— 本来有网也一样关，别指望它一直在线。
-    set_wifi(false);
-    log("关闭 WiFi");
+    // 取完恢复系统原来的 WiFi 状态：原来关的就关回去，原来开的保持开。
+    // 这样启动时不再自动关 WiFi，UI 上的开关完全手动。
+    if was_on {
+        set_wifi(true);
+    } else {
+        set_wifi(false);
+        log("关闭 WiFi");
+    }
     ok
 }
 
@@ -387,8 +394,8 @@ fn update_clock(app: &AppWindow, now: &chrono::DateTime<FixedOffset>, day_change
         festivals.first().cloned().unwrap_or_default(),
     ));
 
-    app.set_yi(SharedString::from(format!("宜 {}", lunar.day_yi().join(" "))));
-    app.set_ji(SharedString::from(format!("忌 {}", lunar.day_ji().join(" "))));
+    app.set_yi(SharedString::from(lunar.day_yi().join(" ")));
+    app.set_ji(SharedString::from(lunar.day_ji().join(" ")));
 }
 
 // Kindle 系统时钟是 UTC，固定东八区

@@ -1,30 +1,14 @@
 {
 	"items": [
 	{
-		"name": "Weather Clock",
-		"priority": 0,
-		"items": [
-		{
-			"name": "Start Weather Clock",
-			"action": "./bin/kwc.sh",
-			"params": "start",
-			"priority": 1,
-			"exitmenu": true,
-			"refresh": false,
-			"status": false,
-			"internal": "status Starting weather clock"
-		},
-		{
-			"name": "Stop Weather Clock",
-			"action": "./bin/kwc.sh",
-			"params": "stop",
-			"priority": 2,
-			"exitmenu": true,
-			"refresh": false,
-			"status": false,
-			"internal": "status Stopping weather clock"
-		}
-		]
+		"name": "Start Weather Clock",
+		"action": "./bin/kwc.sh",
+		"params": "start",
+		"priority": 1,
+		"exitmenu": true,
+		"refresh": false,
+		"status": false,
+		"internal": "status Starting weather clock"
 	}
 	]
 }
