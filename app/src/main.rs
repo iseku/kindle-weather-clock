@@ -17,9 +17,9 @@ static ROUND_FONT_BOLD: &[u8] = include_bytes!("../../assets/KWCRound-Bold.ttf")
 #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
 static mut KINDLE_BACKEND: *const slint_backend_kindle::KindleBackend = std::ptr::null();
 
-/// 实时天气城市码（历下区）
+/// 实时天气城市码
 const CITY_REALTIME: &str = "101120107";
-/// 三天预报城市码（济南市级，itboy 只支持市级）
+/// 三天预报城市码（itboy 只支持市级）
 const CITY_FORECAST: &str = "101120101";
 
 const CLOCK_INTERVAL: Duration = Duration::from_secs(1);
@@ -473,7 +473,7 @@ fn fetch_location(agent: &ureq::Agent) -> String {
             }
         }
     }
-    "济南".to_string()
+    "北京".to_string()
 }
 
 // ---------- 电量 ----------

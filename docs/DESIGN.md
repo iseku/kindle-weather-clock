@@ -25,7 +25,7 @@
 ├──────────────────────────┤                ┃-┃│
 │ 宜 祭祀 平治道涂 馀事勿取  │  三天预报      ┃退┃│
 │ 忌 嫁娶 开市              │  星期五 ☀ 12~23℃ │
-│ 济南            电量 99%  │  星期六 ☁ 10~21℃ │
+│ 北京            电量 99%  │  星期六 ☁ 10~21℃ │
 └──────────────────────────┴──────────────────┘
         ← 60% 左栏 →        ← 40% 右栏 →  ← 控制条
 ```
@@ -189,7 +189,7 @@ if transposed {
 | 实时天气 | `http://d1.weather.com.cn/sk_2d/{城市代码}.html` | 需带 `Referer` + 桌面 UA，返回 `var dataSK={...}` |
 | 三日预报 | `http://t.weather.itboy.net/api/weather/city/{城市代码}` | `data.forecast` 取前 3 天 |
 | 农历/黄历 | `lunar-rs` crate | 宜忌、节日、节气 |
-| 地理位置 | `http://cip.cc/` | 解析含「城市」的那一行，失败回退「济南」 |
+| 地理位置 | `http://cip.cc/` | 解析含「城市」的那一行，失败回退「北京」 |
 | 电量 | `/sys/class/power_supply/max77696-battery/capacity` | PW2 的实际路径，需遍历目录兼容其他机型 |
 | 亮度 | `lipc-set-prop com.lab126.powerd flIntensity` | 范围 0–24，但 **0 档关不干净**，见 §7 |
 
