@@ -659,11 +659,10 @@ fn main() {
     // 初始刷新
     let weather_busy = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     update_clock(&app, &now_east8(), true);
-    // 首帧走一次 GC16 全刷：屏幕上原本是书库首页，只用局部刷新会留下淡淡的残影。
+    // 首帧之后补一次 GC16 全刷（屏幕上原本是书库首页，局部刷新会留下淡淡残影）。
+    // 不能在这里直接请求：此时 Slint 还没渲染出第一帧，全刷区域和画面状态都不对。
     #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
-    unsafe {
-        (&*KINDLE_BACKEND).request_full_refresh();
-    }
+    let first_frame_pending = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
     spawn_weather_update(app.as_weak(), agent.clone(), weather_busy.clone());
 
     // 亮度控制 + 退出
@@ -755,6 +754,8 @@ fn main() {
         let weak = app.as_weak();
         #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
         let wake_flag = Arc::clone(&wake_flag);
+        #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
+        let first_frame_pending = Arc::clone(&first_frame_pending);
         let mut last_day = 0i32;
         let clock_timer = Timer::default();
         clock_timer.start(TimerMode::Repeated, CLOCK_INTERVAL, move || {
@@ -767,6 +768,12 @@ fn main() {
                 #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
                 if wake_flag.swap(false, std::sync::atomic::Ordering::Relaxed) {
                     std::thread::sleep(std::time::Duration::from_millis(300));
+                    unsafe { (&*KINDLE_BACKEND).request_full_refresh(); }
+                }
+                // 第一帧已经画上去了（定时器在事件循环里跑），这时补一次全刷清掉
+                // 屏幕上前一个界面的残影
+                #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
+                if first_frame_pending.swap(false, std::sync::atomic::Ordering::Relaxed) {
                     unsafe { (&*KINDLE_BACKEND).request_full_refresh(); }
                 }
             }

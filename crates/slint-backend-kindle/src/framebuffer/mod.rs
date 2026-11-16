@@ -412,16 +412,14 @@ impl Framebuffer {
 
     /// Full-screen GC16 refresh
     pub(crate) fn refresh_full(&self) {
-        self.send_update(
-            UpdateRect {
-                top: 0,
-                left: 0,
-                width: self.width,
-                height: self.height,
-            },
-            WAVEFORM_MODE_GC16,
-            UPDATE_MODE_FULL,
-        );
+        // 画布坐标系里的整屏，转到 framebuffer 坐标后再提交：
+        // 旋转模式下画布是 1024x758、fb 是 758x1024，直接提交会被驱动判定越界。
+        let (w, h) = (self.width, self.height);
+        let rect = match self.rotation {
+            Rotation::None | Rotation::R180 => UpdateRect { top: 0, left: 0, width: w, height: h },
+            Rotation::R90 | Rotation::R270 => UpdateRect { top: 0, left: 0, width: h, height: w },
+        };
+        self.send_update(rect, WAVEFORM_MODE_GC16, UPDATE_MODE_FULL);
     }
 
     /// Block until the EPDC has applied the last submitted update.
