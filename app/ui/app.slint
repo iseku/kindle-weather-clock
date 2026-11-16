@@ -121,19 +121,29 @@ export component AppWindow inherits Window {
             // 弹性空白：黄历贴底
             Rectangle { vertical-stretch: 1; }
 
-            // 黄历区
-            VerticalLayout {
+            // 黄历区：高度固定，底部状态栏（含 WiFi 按钮）就永远停在同一行。
+            // 不固定的话，宜忌行数一变它就整体上下浮动——行数多的时候会沉到屏幕
+            // 最下沿的触摸死区里，按钮就点不中了。
+            Rectangle {
+                height: 212px;
+                background: transparent;
+                // 极端长的宜忌宁可裁掉尾部，也不许把状态栏顶到屏幕外的触摸死区
+                clip: true;
+                VerticalLayout {
                 spacing: 12px;
                 HorizontalLayout {
                     spacing: 6px;
                     Text { text: "宜"; font-size: 32px; color: #000000; }
-                    Text { text: root.yi; font-size: 26px; color: #000000; wrap: word-wrap; horizontal-stretch: 1; }
+                    // 最多两行，超出用 … 省略（overflow: elide 会按可用高度自动算行数）
+                    Text { text: root.yi; font-size: 26px; color: #000000; wrap: word-wrap; horizontal-stretch: 1; height: 62px; overflow: elide; vertical-alignment: top; }
                 }
                 HorizontalLayout {
                     spacing: 6px;
                     Text { text: "忌"; font-size: 32px; color: #000000; }
-                    Text { text: root.ji; font-size: 26px; color: #000000; wrap: word-wrap; horizontal-stretch: 1; }
+                    Text { text: root.ji; font-size: 26px; color: #000000; wrap: word-wrap; horizontal-stretch: 1; height: 62px; overflow: elide; vertical-alignment: top; }
                 }
+                // 吃掉剩余高度，把状态栏顶到黄历区底部
+                Rectangle { vertical-stretch: 1; }
                 HorizontalLayout {
                     spacing: 16px;
                     // 三个元素统一 46px 高并垂直居中，否则 WiFi 那块（触摸热区撑高）
@@ -156,6 +166,7 @@ export component AppWindow inherits Window {
                             clicked => { root.toggle-wifi(); }
                         }
                     }
+                }
                 }
             }
         }
