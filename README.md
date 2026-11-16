@@ -85,7 +85,7 @@ KINDLETOOL=/path/to/kindletool tools/build-mrpi.sh
 ```
 app/                          Slint 应用（main.rs + ui/app.slint）
 crates/slint-backend-kindle/  Kindle 平台后端：framebuffer / 触摸 / 唤醒
-assets/                       界面字体（Noto Sans SC 子集）与图标
+assets/                       界面字体（寒蝉圆体子集 + 合成的粗体）与图标
 tools/
   run-kwc.sh                  设备上的守护循环（崩溃自动重启、退出恢复 UI）
   build-mrpi.sh               本地打包 MRPI 安装包
@@ -105,7 +105,12 @@ docs/DESIGN.md                完整设计文档
 
 代码采用 MIT OR Apache-2.0。
 
-界面字体 `assets/NotoSansSC-Bold-subset.otf` 是 [Noto Sans SC](https://github.com/notofonts/noto-cjk) 的子集，SIL Open Font License 1.1（见 [assets/OFL.txt](assets/OFL.txt)），按项目实际用字裁剪（约 1700 字，748 KB），并把行高度量调成与原始设计一致。修改界面文案后需要重新子集化，用字集合见 `assets/font-chars.txt` 加上源码中的中文字面量。
+界面字体基于 [寒蝉圆体 ChillRound](https://github.com/Warren2060/ChillRound)，SIL Open Font License 1.1（见 [assets/OFL.txt](assets/OFL.txt)）：
+
+- `assets/KWCRound.ttf` —— 子集（约 1700 字，1 MB），默认字体
+- `assets/KWCRound-Bold.ttf` —— 由该子集**轮廓膨胀合成**的粗体（字体本身只有 Regular 字重），仅用于日历格子里的农历小字
+
+原字体带保留字体名 `ChillRoundF` / `ChillRoundM`，按 OFL 要求，修改后的版本已改名为 `KWC Round` / `KWC Round Bold`。修改界面文案后需要重新子集化，用字集合见 `assets/font-chars.txt` 加上源码中的中文字面量。
 
 框架层 `crates/slint-backend-kindle` 源自 [slint-kindle-backend](https://github.com/sverrejb/slint-kindle-backend)。
 

@@ -10,7 +10,9 @@ use lunar_rs::Solar;
 slint::include_modules!();
 
 #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
-static NOTO_SANS_SC_BOLD: &[u8] = include_bytes!("../../assets/NotoSansSC-Bold-subset.otf");
+static ROUND_FONT: &[u8] = include_bytes!("../../assets/KWCRound.ttf");
+#[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
+static ROUND_FONT_BOLD: &[u8] = include_bytes!("../../assets/KWCRound-Bold.ttf");
 
 #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
 static mut KINDLE_BACKEND: *const slint_backend_kindle::KindleBackend = std::ptr::null();
@@ -536,13 +538,19 @@ fn main() {
     // Kindle 后端：必须先 install 设置全局 platform，再创建组件
     #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
     let backend = {
-        let b = slint_backend_kindle::install(NOTO_SANS_SC_BOLD)
+        let b = slint_backend_kindle::install(ROUND_FONT)
             .expect("failed to install Kindle backend");
         b.set_black_and_white(true);
         Arc::new(b)
     };
 
     let app = AppWindow::new().expect("failed to create AppWindow");
+
+    // 日历格子里的农历小字用加粗圆体（同一字体文件只有常规字重，粗体是轮廓膨胀生成的）
+    #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
+    backend
+        .register_font_from_memory(ROUND_FONT_BOLD)
+        .expect("failed to register bold font");
     // ponytail: 必须带超时。合盖休眠唤醒后 WiFi 未就绪时，无超时的 socket 读会永久阻塞
     // 在 sk_wait_data，主线程冻结 → 时钟定时器一起停，屏幕从此再不刷新。
     let agent = ureq::AgentBuilder::new()
