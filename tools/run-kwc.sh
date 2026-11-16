@@ -1,4 +1,12 @@
 #!/bin/sh
+# 运行期间 cvm 会一直被 STOP，冻结过久时系统看门狗会抓线程栈、让 dmcc 把诊断包
+# 归档到 /mnt/us/documents（书库目录），于是书里会多出一个 cvm_*_crash_* 条目。
+# 启动和退出各清一次，避免这两类残留堆积。
+rm -rf /mnt/us/documents/cvm_*_crash_*.sdr \
+       /mnt/us/documents/cvm_*_crash_*.txt \
+       /mnt/us/documents/cvm_*_crash_*.tgz 2>/dev/null
+# 同名崩溃还会在 /mnt/us 根下留一份 core dump（单个 60~100 MB，攒两次就把分区占满）
+rm -f /mnt/us/cvm_*.core 2>/dev/null
 killall -STOP awesome 2>/dev/null
 killall -STOP cvm 2>/dev/null
 lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null
@@ -26,6 +34,12 @@ while true; do
             /sbin/initctl start framework 2>/dev/null
             sleep 8
         fi
+        # 退出时再清一次：这次会话里被看门狗归档的诊断包，不该留在书库里。
+        # 放在启动主页之前，让框架扫描到的是干净的目录。
+        rm -rf /mnt/us/documents/cvm_*_crash_*.sdr \
+               /mnt/us/documents/cvm_*_crash_*.txt \
+               /mnt/us/documents/cvm_*_crash_*.tgz 2>/dev/null
+        rm -f /mnt/us/cvm_*.core 2>/dev/null
         lipc-set-prop com.lab126.appmgrd start app://com.lab126.booklet.home 2>/dev/null
         sleep 6
         /usr/sbin/eips -f >/dev/null 2>&1
