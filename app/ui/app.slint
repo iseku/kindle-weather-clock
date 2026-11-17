@@ -54,6 +54,9 @@ export component AppWindow inherits Window {
 
     // 控制
     in property <int> brightness: 20;
+    // 刷新进行中：按钮变灰、图标转起来、忽略再次点击
+    // （WiFi 关着时一次刷新要等十几秒，没有反馈用户会以为没点上）
+    in property <bool> refreshing: false;
     callback brightness-up();
     callback brightness-down();
     // 短按刷新图标：立刻重取天气并全屏重绘
@@ -324,13 +327,19 @@ export component AppWindow inherits Window {
         refresh-btn := Rectangle {
             width: 58px;
             height: 64px;
-            background: refresh-ta.pressed ? #cccccc : #ffffff;
-            border-width: 2px;
-            border-color: #000000;
+            // 刷新中把整块翻成黑底白图，是最省事也最显眼的「正在忙」信号。
+            // 不画边框——这一列只有它是纯图标，上下两个亮度按钮带框，
+            // 视觉上反而能区分「这个是另一种东西」。
+            background: root.refreshing
+                ? #000000
+                : (refresh-ta.pressed ? #cccccc : #ffffff);
 
             property <int> hold-ticks: 0;
             property <bool> fired: false;
+            // 当前显示第几帧（0..3，每帧 90°）
+            property <int> frame: 0;
 
+            // 静止：白底黑图标
             Image {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
@@ -338,9 +347,39 @@ export component AppWindow inherits Window {
                 height: 36px;
                 source: @image-url("icons/refresh-ccw-dot.svg");
                 image-fit: contain;
+                visible: !root.refreshing;
+            }
+
+            // 刷新中：黑底白图标，轮流显示 4 个预旋转好的帧（0°/90°/180°/270°）。
+            //
+            // 不能用 transform-rotation 转同一张图——这块屏走的是 Slint 软件
+            // 渲染器，而 i-slint-renderer-software-1.17.1/lib.rs:1270 的
+            // supports_transformations() 直接返回 false，partial_renderer.rs:142
+            // 检查后跳过变换，旋转完全无效（实测八帧方向一模一样）。
+            // 也不能用 opacity 做「变灰」：二值渲染把灰度 <128 画黑、否则画白
+            // （crates/slint-backend-kindle/src/platform.rs 的 rgb_to_gray），
+            // 黑线乘 0.45 后灰度 140 会被抹成白色，图标整个消失。
+            // 所以只能预生成旋转帧、逐帧换图。这些帧设计上不可见：翻白底黑图时
+            // 它们不画，不进脏区。
+            Image { x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; width: 36px; height: 36px; source: @image-url("icons/spin-0.svg"); image-fit: contain; visible: root.refreshing && refresh-btn.frame == 0; }
+            Image { x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; width: 36px; height: 36px; source: @image-url("icons/spin-1.svg"); image-fit: contain; visible: root.refreshing && refresh-btn.frame == 1; }
+            Image { x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; width: 36px; height: 36px; source: @image-url("icons/spin-2.svg"); image-fit: contain; visible: root.refreshing && refresh-btn.frame == 2; }
+            Image { x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; width: 36px; height: 36px; source: @image-url("icons/spin-3.svg"); image-fit: contain; visible: root.refreshing && refresh-btn.frame == 3; }
+
+            // 4 帧 × 1 秒 = 一格一秒慢慢转。墨水屏本身刷新就慢，转快了
+            // 每帧都变成一次局部刷新的拖影，反而看不清；一秒一格既能表达
+            // 「在忙」，也不至于让按钮区域抖成一片灰。
+            Timer {
+                interval: 1s;
+                running: root.refreshing;
+                triggered => {
+                    refresh-btn.frame = Math.mod(refresh-btn.frame + 1, 4);
+                }
             }
 
             refresh-ta := TouchArea {
+                // 刷新中不接受任何点击（含长按退出）
+                enabled: !root.refreshing;
                 pointer-event(event) => {
                     if (event.kind == PointerEventKind.down) {
                         refresh-btn.hold-ticks = 0;

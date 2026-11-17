@@ -45,6 +45,10 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(12);
 const WEATHER_FULL_REFRESH_EVERY: u64 = 6;
 /// 天气刷新计数器（跨线程累加，只在取数回来那一刻改）
 static WEATHER_REFRESH_TICKS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// 本轮刷新的开始时刻（epoch 秒，0 = 空闲）。UI 的「刷新中」状态靠它兜底：
+/// 取数线程万一卡死在 DNS 里（历史上真发生过，挂了 2.5 小时），
+/// 这个状态会一直亮着、按钮永远点不动，必须能超时自解。
+static REFRESH_STARTED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 // ---------- 天气数据结构 ----------
 
@@ -369,6 +373,12 @@ fn spawn_weather_update(
         return;
     }
     busy.store(now, Ordering::Relaxed);
+    REFRESH_STARTED.store(now, Ordering::Relaxed);
+    // 立刻点亮「刷新中」：WiFi 关着时一轮要十几秒（开网 6 秒 + 等就绪 10 秒），
+    // 没有反馈用户会以为没点上，反复戳按钮。
+    if let Some(app) = weak.upgrade() {
+        app.set_refreshing(true);
+    }
     std::thread::spawn(move || {
         let snap = fetch_snapshot(&agent);
         let _ = slint::invoke_from_event_loop(move || {
@@ -388,6 +398,10 @@ fn spawn_weather_update(
                     }
                 }
             }
+            if let Some(app) = weak.upgrade() {
+                app.set_refreshing(false);
+            }
+            REFRESH_STARTED.store(0, Ordering::Relaxed);
             busy.store(0, Ordering::Relaxed);
         });
     });
@@ -809,6 +823,21 @@ fn main() {
                 #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
                 if first_frame_pending.swap(false, std::sync::atomic::Ordering::Relaxed) {
                     unsafe { (&*KINDLE_BACKEND).request_full_refresh(); }
+                }
+                // 「刷新中」超时兜底：取数线程曾经卡在 DNS 里挂过两个多小时，
+                // 那时按钮会一直转、一直点不动。超过 5 分钟就当它没回来，
+                // 把状态熄灭，让用户还能再点一次（卡住的线程本身救不回来）。
+                let started = REFRESH_STARTED.load(std::sync::atomic::Ordering::Relaxed);
+                if started != 0 {
+                    let now_s = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    if now_s > started + 300 {
+                        REFRESH_STARTED.store(0, std::sync::atomic::Ordering::Relaxed);
+                        app.set_refreshing(false);
+                        log("刷新超时，状态复位");
+                    }
                 }
             }
         });
