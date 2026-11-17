@@ -633,10 +633,17 @@ fn main() {
 
     // ponytail: 必须带超时。合盖休眠唤醒后 WiFi 未就绪时，无超时的 socket 读会永久阻塞
     // 在 sk_wait_data，主线程冻结 → 时钟定时器一起停，屏幕从此再不刷新。
+    //
+    // max_idle_connections(0) 关掉连接池：这个 agent 全局复用，而取完数会把 WiFi
+    // 关掉（或用户手动关），池里 keep-alive 的连接必然已经失效。默认配置下下一轮
+    // 第一发会先尝试复用那条死连接、失败了再重连，于是每 10 分钟必然多一次失败和
+    // 一次 3 秒重试（实测每轮日志都长这样，跟等多久无关——11:18 那轮 WiFi 本来就是
+    // 开着的也照样失败）。每 10 分钟才取一次，复用连接毫无价值。
     let agent = ureq::AgentBuilder::new()
         .timeout_connect(std::time::Duration::from_secs(5))
         .timeout_read(std::time::Duration::from_secs(10))
         .timeout_write(std::time::Duration::from_secs(10))
+        .max_idle_connections(0)
         .build();
 
     // 后台线程监听输入事件（电源键/触屏），设标志位；主线程定时器检查并全刷
