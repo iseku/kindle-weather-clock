@@ -261,6 +261,15 @@ pub struct CalendarRow { cells: [CalendarDay] }   // 每周一行，补齐到 7 
 
 刷新按钮同时承担退出，因为「退」字按钮太容易误触，一笔按下去整屏就没了。实现上用 `TouchArea` 的 `pressed` 属性驱动一个 100ms 的 `Timer`，满 50 拍（5 秒）触发 `quit()`；松手时若没到 5 秒才算一次短按，走 `refresh-weather()`。`pointer-event` 的 `down` 阶段把计数清零，所以连续长按也能重新计时。
 
+**刷新中的状态提示**：WiFi 关着时按刷新要等十几秒（开网 6 秒 + 等就绪 10 秒），没有反馈用户会以为没点上、反复戳。所以取数期间把按钮翻成**黑底白图**并逐帧旋转，同时 `TouchArea` 的 `enabled` 设为 `!refreshing`，屏蔽重复点击（含长按退出）。Rust 侧 `REFRESH_STARTED` 记本轮开始的时刻，时钟定时器每秒检查，超过 5 分钟仍未回来就熄灭该状态——历史上取数线程卡在 DNS 里挂过两个多小时，没有兜底的话按钮会永久失效。
+
+这个旋转动画踩过两个坑，都是墨水屏特有的：
+
+1. **不能用 `transform-rotation`**。本项目走 Slint 软件渲染器，而 `i-slint-renderer-software-1.17.1/lib.rs:1270` 的 `supports_transformations()` 直接返回 `false`，`i-slint-core-1.17.1/partial_renderer.rs:142` 检查后跳过整个变换。实测转同一张图，连抓六帧方向一模一样。改成预生成 4 个旋转帧（`icons/spin-0..3.svg`，0°/90°/180°/270°），由 `Timer` 每秒钟换一帧。
+2. **不能用 `opacity` 变灰**。二值渲染（`crates/slint-backend-kindle/src/platform.rs` 的 `rgb_to_gray`）把灰度 `<128` 画黑、否则画白；黑线乘 0.45 后灰度约 140，会被直接抹成白色，图标整个消失。
+
+帧率选 1 秒一格而不是更密：墨水屏每帧都是一次局部刷新，转太快画面上只剩拖影，反而不如慢速清晰。
+
 ### 7.2 按需 WiFi（手动开关）
 
 Kindle 的 WiFi 常开是耗电大户，但取数又需要联网。折中：**取数时按需开网，取完按系统原状恢复**，WiFi 开关完全交给用户手动控制：

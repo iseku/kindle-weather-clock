@@ -1,1 +1,5 @@
 Icons are from Lucide (https://lucide.dev), licensed under the ISC License.
+
+spin-0.svg through spin-3.svg are the same refresh-ccw-dot icon rotated by
+0/90/180/270 degrees. Only a rotate() wrapper was added, generated locally,
+because the software renderer this project uses has no transform support.
