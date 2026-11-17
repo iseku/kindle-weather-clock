@@ -56,6 +56,9 @@ export component AppWindow inherits Window {
     in property <int> brightness: 20;
     callback brightness-up();
     callback brightness-down();
+    // 短按刷新图标：立刻重取天气并全屏重绘
+    callback refresh-weather();
+    // 长按刷新图标 5 秒：退出程序
     callback quit();
     callback toggle-wifi();
 
@@ -146,21 +149,25 @@ export component AppWindow inherits Window {
                 Rectangle { vertical-stretch: 1; }
                 HorizontalLayout {
                     spacing: 16px;
-                    // 三个元素统一 46px 高并垂直居中，否则 WiFi 那块（触摸热区撑高）
-                    // 会跟左边的城市/电量错位
+                    // 城市贴左，电量与 WiFi 一起贴右——和手机状态栏的习惯一致
                     Text { text: root.location; font-size: 24px; color: #000000; height: 44px; vertical-alignment: center; }
+                    // 弹性空白把右边两项推到屏幕右缘
+                    Rectangle { horizontal-stretch: 1; }
                     Text { text: root.battery; font-size: 24px; color: #000000; height: 44px; vertical-alignment: center; }
-                    // 触摸热区要够大：原来只有文字本身（约 60x30），手指很难点中
+                    // 热区只包住文字本身；高度 44px 已经够手指点，左右留 12px 余量。
+                    // padding 只有 layout 元素才生效，所以中间套一层 HorizontalLayout。
                     Rectangle {
                         background: transparent;
-                        width: 150px;
                         height: 44px;
-                        Text {
-                            text: root.wifi;
-                            font-size: 24px;
-                            color: #000000;
-                            horizontal-alignment: right;
-                            vertical-alignment: center;
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            Text {
+                                text: root.wifi;
+                                font-size: 24px;
+                                color: #000000;
+                                vertical-alignment: center;
+                            }
                         }
                         TouchArea {
                             clicked => { root.toggle-wifi(); }
@@ -312,12 +319,53 @@ export component AppWindow inherits Window {
             TouchArea { clicked => { root.brightness-down(); } }
         }
         Rectangle { width: 58px; height: 20px; background: transparent; }
-        Rectangle {
+        // 手动刷新：短按重取天气 + 全屏重绘，长按 5 秒退出
+        // （直接放退出按钮太容易误触，改成需要刻意长按才生效）
+        refresh-btn := Rectangle {
             width: 58px;
             height: 64px;
-            background: #000000;
-            Text { text: "退"; font-size: 30px; font-weight: 700; color: #ffffff; horizontal-alignment: center; vertical-alignment: center; }
-            TouchArea { clicked => { root.quit(); } }
+            background: refresh-ta.pressed ? #cccccc : #ffffff;
+            border-width: 2px;
+            border-color: #000000;
+
+            property <int> hold-ticks: 0;
+            property <bool> fired: false;
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 36px;
+                height: 36px;
+                source: @image-url("icons/refresh-ccw-dot.svg");
+                image-fit: contain;
+            }
+
+            refresh-ta := TouchArea {
+                pointer-event(event) => {
+                    if (event.kind == PointerEventKind.down) {
+                        refresh-btn.hold-ticks = 0;
+                        refresh-btn.fired = false;
+                    } else if (event.kind == PointerEventKind.up) {
+                        // 长按已触发退出就不再补一次刷新
+                        if (!refresh-btn.fired) {
+                            root.refresh-weather();
+                        }
+                    }
+                }
+            }
+
+            // 按住期间每 100ms 记一拍，满 50 拍（5 秒）触发退出
+            Timer {
+                interval: 100ms;
+                running: refresh-ta.pressed && !refresh-btn.fired;
+                triggered => {
+                    refresh-btn.hold-ticks += 1;
+                    if (refresh-btn.hold-ticks >= 50) {
+                        refresh-btn.fired = true;
+                        root.quit();
+                    }
+                }
+            }
         }
     }
 

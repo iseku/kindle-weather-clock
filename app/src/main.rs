@@ -40,6 +40,12 @@ const CLOCK_INTERVAL: Duration = Duration::from_secs(1);
 const WEATHER_INTERVAL: Duration = Duration::from_secs(600);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(12);
 
+/// 每取几次天气做一次全屏 GC16 刷新。取数间隔 10 分钟，
+/// 所以 6 次正好是一小时一次全刷，其余时候只走局部刷新。
+const WEATHER_FULL_REFRESH_EVERY: u64 = 6;
+/// 天气刷新计数器（跨线程累加，只在取数回来那一刻改）
+static WEATHER_REFRESH_TICKS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 // ---------- 天气数据结构 ----------
 
 #[derive(Deserialize)]
@@ -236,8 +242,9 @@ fn with_network(mut f: impl FnMut() -> bool) -> bool {
             return f();
         }
         log("网络就绪");
-        // 路由出现不等于能上网：DNS/HTTP 还要几秒才通，实测紧接着取数会失败
-        std::thread::sleep(std::time::Duration::from_secs(5));
+        // 路由出现不等于能上网：DNS/HTTP 还要更久才通，5 秒时每轮第一发都失败
+        // （靠下面的重试兜住），实测要 10 秒才稳定。
+        std::thread::sleep(std::time::Duration::from_secs(10));
     }
     let mut ok = f();
     if !ok {
@@ -349,6 +356,7 @@ fn spawn_weather_update(
     weak: slint::Weak<AppWindow>,
     agent: ureq::Agent,
     busy: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    force_full: bool,
 ) {
     use std::sync::atomic::Ordering;
     let now = std::time::SystemTime::now()
@@ -367,8 +375,17 @@ fn spawn_weather_update(
             if let Some(app) = weak.upgrade() {
                 apply_snapshot(&app, snap);
                 #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
-                unsafe {
-                    (&*KINDLE_BACKEND).request_full_refresh();
+                {
+                    // 天气每 10 分钟才变一次，屏幕上只有温度/湿度这些字在换，
+                    // 局部刷新足够干净（每分钟走的时钟验证过，没肉眼可见残影）。
+                    // 攒到第 6 次（= 一小时）才走一次 GC16 全刷，把长期累积的
+                    // 底灰彻底清掉，也省下每 10 分钟一次的全屏闪烁。
+                    let n = WEATHER_REFRESH_TICKS.fetch_add(1, Ordering::Relaxed) + 1;
+                    if force_full || n % WEATHER_FULL_REFRESH_EVERY == 0 {
+                        unsafe {
+                            (&*KINDLE_BACKEND).request_full_refresh();
+                        }
+                    }
                 }
             }
             busy.store(0, Ordering::Relaxed);
@@ -663,7 +680,7 @@ fn main() {
     // 不能在这里直接请求：此时 Slint 还没渲染出第一帧，全刷区域和画面状态都不对。
     #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
     let first_frame_pending = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
-    spawn_weather_update(app.as_weak(), agent.clone(), weather_busy.clone());
+    spawn_weather_update(app.as_weak(), agent.clone(), weather_busy.clone(), false);
 
     // 亮度控制 + 退出
     {
@@ -686,6 +703,23 @@ fn main() {
                 let v = (app.get_brightness() - 4).max(0);
                 set_frontlight(v);
                 app.set_brightness(v);
+            }
+        });
+
+        // 短按刷新图标：立刻重取一次天气，并强制一次 GC16 全刷（手动操作要立刻见效，
+        // 不必等下一个整点）。上一轮还没回来时 spawn_weather_update 会自己跳过。
+        app.on_refresh_weather({
+            let weak = app.as_weak();
+            let agent = agent.clone();
+            let weather_busy = weather_busy.clone();
+            move || {
+                log("手动刷新");
+                spawn_weather_update(
+                    weak.clone(),
+                    agent.clone(),
+                    weather_busy.clone(),
+                    true,
+                );
             }
         });
 
@@ -790,7 +824,7 @@ fn main() {
         let weather_timer = {
             let t = Timer::default();
             t.start(TimerMode::Repeated, WEATHER_INTERVAL, move || {
-                spawn_weather_update(weak.clone(), agent.clone(), weather_busy.clone());
+                spawn_weather_update(weak.clone(), agent.clone(), weather_busy.clone(), false);
             });
             t
         };
