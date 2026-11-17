@@ -246,13 +246,15 @@ fn with_network(mut f: impl FnMut() -> bool) -> bool {
             return f();
         }
         log("网络就绪");
-        // 路由出现不等于能上网：DNS/HTTP 还要更久才通，5 秒时每轮第一发都失败
-        // （靠下面的重试兜住），实测要 10 秒才稳定。
-        std::thread::sleep(std::time::Duration::from_secs(10));
+        // 路由出现后再稳 5 秒。实测路由 7 秒左右出现、DNS 5 秒就能解析，
+        // 5 秒足够；之前以为每轮第一发必失败是这里等得不够，加到 10 秒毫无效果，
+        // 真正的原因是连接池里的死连接（见 AgentBuilder 处的注释）。
+        std::thread::sleep(std::time::Duration::from_secs(5));
     }
     let mut ok = f();
     if !ok {
-        // 刚开网的第一发经常撞在"路由有了但 DNS 没好"的窗口上，重试一次
+        // 兜底重试一次。历史上每轮第一发必失败，原因已查明是连接池里的死连接
+        // （见 AgentBuilder 处注释），修掉后正常不会再走到这里。
         log("取数失败，3 秒后重试");
         std::thread::sleep(std::time::Duration::from_secs(3));
         ok = f();
