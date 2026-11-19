@@ -227,8 +227,14 @@ export component AppWindow inherits Window {
                     }
                 }
 
+                // 间距 10px、第二列 198px：让「湿度 / 风向」这一列与下方三天
+                // 预报的「低温 x~高温 y℃」左缘对齐（实测两者都是 x≈804）。
+                // 这个 HorizontalLayout 实际是右对齐的（右列的右缘固定贴在
+                // x≈1002），缩 spacing 只会把左列往右推、右列纹丝不动，所以
+                // 要让右列左移必须加宽右列本身；同时把 spacing 减去同样的量，
+                // 左列才会待在原地。
                 HorizontalLayout {
-                    spacing: 44px;
+                    spacing: 10px;
                     VerticalLayout {
                         width: 165px;
                         spacing: 0px;
@@ -237,7 +243,7 @@ export component AppWindow inherits Window {
                         Text { text: root.temp; font-size: 30px; font-weight: 700; color: #000000; }
                     }
                     VerticalLayout {
-                        width: 165px;
+                        width: 198px;
                         spacing: 0px;
                         vertical-stretch: 0;
                         Text { text: "湿度"; font-size: 35px; color: #555555; }
@@ -245,7 +251,7 @@ export component AppWindow inherits Window {
                     }
                 }
                 HorizontalLayout {
-                    spacing: 44px;
+                    spacing: 10px;
                     VerticalLayout {
                         width: 165px;
                         spacing: 0px;
@@ -254,7 +260,7 @@ export component AppWindow inherits Window {
                         Text { text: root.wind-force; font-size: 30px; font-weight: 700; color: #000000; }
                     }
                     VerticalLayout {
-                        width: 165px;
+                        width: 198px;
                         spacing: 0px;
                         vertical-stretch: 0;
                         Text { text: "风向"; font-size: 35px; color: #555555; }
